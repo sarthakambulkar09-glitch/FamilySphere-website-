@@ -1,0 +1,8 @@
+{
+  "name": "FamilySphere — Ambulkar Family Dynasty & Cinematic Archive",
+  "description": "Interactive Ambulkar family tree and digital archive with cinematic parallax scrolling, glowing neon effects, 3D tilt interactions, and 19 member directory.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

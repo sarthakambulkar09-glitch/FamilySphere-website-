@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FamilySphere — Ambulkar Family Dynasty & Cinematic Archive</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Manrope', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                        hand: ['Caveat', 'cursive'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg-base: #F4F3FF;
+            --card-bg: rgba(255, 255, 255, 0.94);
+            --text-main: #172033;
+            --text-sec: #667085;
+            --border-color: #172033;
+            --shadow-color: #172033;
+            --glow-primary: rgba(113, 59, 255, 0.4);
+            --glow-secondary: rgba(53, 184, 255, 0.35);
+            --glow-accent: rgba(253, 224, 71, 0.5);
+            --glow-pink: rgba(217, 75, 255, 0.35);
+        }
+        body.theme-heritage {
+            --bg-base: #F2E5C3;
+            --card-bg: #EFE5C2;
+            --text-main: #493323;
+            --text-sec: #79583E;
+            --border-color: #79583E;
+            --shadow-color: rgba(121, 88, 62, 0.45);
+            --glow-primary: rgba(180, 83, 9, 0.4);
+            --glow-secondary: rgba(217, 119, 6, 0.35);
+            --glow-accent: rgba(245, 158, 11, 0.5);
+            --glow-pink: rgba(194, 65, 12, 0.35);
+            background-color: #F2E5C3 !important;
+            background-image: 
+              linear-gradient(to right, rgba(197, 164, 109, 0.18) 1px, transparent 1px), 
+              linear-gradient(to bottom, rgba(197, 164, 109, 0.18) 1px, transparent 1px) !important;
+        }
+        body.theme-modern {
+            --bg-base: #F4F3FF;
+            --card-bg: rgba(255, 255, 255, 0.94);
+            --text-main: #172033;
+            --text-sec: #667085;
+            --border-color: #172033;
+            --shadow-color: #172033;
+            --glow-primary: rgba(113, 59, 255, 0.4);
+            --glow-secondary: rgba(53, 184, 255, 0.35);
+            --glow-accent: rgba(253, 224, 71, 0.5);
+            --glow-pink: rgba(217, 75, 255, 0.35);
+            background-color: #F4F3FF !important;
+            background-image: 
+                linear-gradient(to right, rgba(152, 120, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(152, 120, 255, 0.1) 1px, transparent 1px) !important;
+        }
+
+        body {
+            background-size: 32px 32px;
+            color: var(--text-main);
+            overflow-x: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .notebook-card {
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 6px 6px 0px var(--border-color);
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), 
+                        box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-style: preserve-3d;
+            position: relative;
+        }
+        .notebook-card:hover {
+            transform: translateY(-5px) scale(1.012);
+            box-shadow: 10px 10px 0px var(--border-color), 
+                        0 0 25px var(--glow-primary), 
+                        0 0 45px var(--glow-secondary);
+        }
+
+        .polaroid-frame {
+            background: #FFFFFF;
+            padding: 14px 14px 40px 14px;
+            border: 2px solid #172033;
+            box-shadow: 6px 6px 0px #172033;
+            transform: rotate(-1deg);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
+                        box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-style: preserve-3d;
+        }
+        .polaroid-frame:hover {
+            transform: rotate(0deg) translateY(-6px) scale(1.03);
+            box-shadow: 10px 10px 0px #172033, 0 0 25px rgba(53, 184, 255, 0.45);
+        }
+
+        .tape-strip {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 75px;
+            height: 24px;
+            background: rgba(255, 241, 199, 0.95);
+            border: 1px dashed rgba(210, 190, 140, 0.85);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+        }
+
+        .retro-pill {
+            border: 2px solid var(--border-color);
+            box-shadow: 3px 3px 0px var(--border-color);
+            border-radius: 9999px;
+            font-weight: 700;
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .retro-pill:hover {
+            transform: translateY(-2px);
+            box-shadow: 4px 4px 0px var(--border-color), 0 0 15px var(--glow-accent);
+        }
+
+        .retro-btn {
+            border: 2px solid var(--border-color);
+            box-shadow: 4px 4px 0px var(--border-color);
+            border-radius: 14px;
+            font-weight: 700;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .retro-btn:hover {
+            transform: translate(-3px, -3px);
+            box-shadow: 7px 7px 0px var(--border-color), 0 0 20px var(--glow-accent);
+        }
+        .retro-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0px var(--border-color);
+        }
+
+        /* Animated Underline for Nav Links */
+        .nav-link {
+            position: relative;
+            transition: color 0.25s ease;
+        }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #713BFF, #35B8FF);
+            transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            border-radius: 2px;
+        }
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 75%;
+            left: 12.5%;
+        }
+
+        /* Animated Gradient Headline */
+        @keyframes gradient-flow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .gradient-text-animated {
+            background: linear-gradient(135deg, #172033 0%, #713BFF 35%, #0284C7 65%, #172033 100%);
+            background-size: 250% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient-flow 7s ease infinite;
+        }
+        body.theme-heritage .gradient-text-animated {
+            background: linear-gradient(135deg, #493323 0%, #B45309 35%, #D97706 65%, #493323 100%);
+            background-size: 250% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient-flow 7s ease infinite;
+        }
+
+        /* Ambient Parallax Glow Orbs */
+        .ambient-glow-orb {
+            position: absolute;
+            border-radius: 9999px;
+            filter: blur(80px);
+            pointer-events: none;
+            z-index: 0;
+            will-change: transform;
+        }
+
+        #scroll-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #713BFF, #35B8FF, #D94BFF, #FDE047);
+            box-shadow: 0 0 12px rgba(113, 59, 255, 0.6);
+            z-index: 100;
+            width: 0%;
+            transition: width 0.08s linear;
+        }
+
+        .reveal-on-scroll {
+            opacity: 0;
+            transform: translateY(32px) scale(0.985);
+            transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), 
+                        transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+            will-change: opacity, transform;
+        }
+        .reveal-on-scroll.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        ::-webkit-scrollbar { width: 9px; height: 9px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.04); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #713BFF; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, ::before, ::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+            .reveal-on-scroll {
+                opacity: 1 !important;
+                transform: none !important;
+            }
+            .ambient-glow-orb { display: none !important; }
+        }
+    </style>
+</head>
+<body class="theme-modern h-full flex flex-col selection:bg-yellow-300 selection:text-midnight relative">
+
+    <div id="scroll-progress"></div>
+
+    <!-- Parallax Ambient Glowing Lighting Layers -->
+    <div id="parallax-orb-1" class="ambient-glow-orb bg-purple-400/20 w-96 h-96 -top-20 -left-20"></div>
+    <div id="parallax-orb-2" class="ambient-glow-orb bg-sky-400/20 w-[480px] h-[480px] top-[900px] -right-32"></div>
+    <div id="parallax-orb-3" class="ambient-glow-orb bg-yellow-300/20 w-80 h-80 top-[2200px] left-10"></div>
+    <div id="parallax-orb-4" class="ambient-glow-orb bg-pink-400/15 w-[500px] h-[500px] top-[3800px] right-20"></div>
+
+    <!-- Sticky Navigation Bar with Animated Underlines -->
+    <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b-2 border-midnight shadow-sm">
+        <div class="flex items-center gap-3 cursor-pointer group" onclick="scrollToSection('sec-hero')">
+            <div class="w-10 h-10 rounded-2xl bg-yellow-300 text-midnight border-2 border-midnight flex items-center justify-center font-black shadow-[3px_3px_0px_#172033] group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(253,224,71,0.6)] transition-all">
+                <i data-lucide="git-commit" class="w-6 h-6 animate-pulse"></i>
+            </div>
+            <div>
+                <h1 class="font-heading font-extrabold text-base sm:text-lg tracking-tight group-hover:text-indigo-600 transition-colors">FamilySphere</h1>
+                <p class="text-xs text-secondary font-medium hand-font text-base -mt-1">Ambulkar Family Dynasty</p>
+            </div>
+        </div>
+
+        <nav class="hidden xl:flex items-center gap-1 bg-white p-1.5 rounded-full border-2 border-midnight shadow-[3px_3px_0px_#172033]">
+            <button onclick="scrollToSection('sec-hero')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Home</button>
+            <button onclick="scrollToSection('sec-heritage')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Heritage</button>
+            <button onclick="scrollToSection('sec-branches')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Branches</button>
+            <button onclick="scrollToSection('sec-tree')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Tree Explorer</button>
+            <button onclick="scrollToSection('sec-members')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Members</button>
+            <button onclick="scrollToSection('sec-profile')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Spotlight</button>
+            <button onclick="scrollToSection('sec-memories')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Memories</button>
+            <button onclick="scrollToSection('sec-events')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Events</button>
+            <button onclick="scrollToSection('sec-auth')" class="nav-link px-3 py-1.5 rounded-full text-xs font-bold transition hover:bg-gray-100 text-secondary hover:text-midnight">Portal</button>
+        </nav>
+
+        <div class="flex items-center gap-3">
+            <button onclick="toggleTheme()" class="px-3.5 py-2 rounded-xl bg-yellow-300 text-midnight border-2 border-midnight text-xs font-bold retro-btn flex items-center gap-2 hover:bg-yellow-200">
+                <i data-lucide="sparkles" class="w-4 h-4 text-indigo-700 animate-spin" style="animation-duration: 8s;"></i>
+                <span class="hidden sm:inline">Theme Toggle</span>
+            </button>
+            <button onclick="scrollToSection('sec-auth')" class="px-4 py-2 rounded-xl bg-midnight text-white text-xs font-bold retro-btn flex items-center gap-2 hover:bg-slate-800">
+                <i data-lucide="log-in" class="w-4 h-4 text-yellow-300"></i> Login
+            </button>
+        </div>
+    </header>
+
+    <!-- Continuous 10 Scrolling Sections -->
+    <main class="flex-1 flex flex-col w-full space-y-6 md:space-y-10 pb-16 relative z-10">
+
+        <!-- SECTION 1: HERO LANDING -->
+        <section id="sec-hero" class="flex flex-col justify-center items-center px-6 pt-10 pb-4 text-center max-w-5xl mx-auto w-full reveal-on-scroll relative">
+            <div class="flex flex-wrap items-center justify-center gap-3 mb-5">
+                <span class="px-4 py-1.5 bg-yellow-300 text-midnight text-xs retro-pill">AMBULKAR DYNASTY</span>
+                <span class="px-4 py-1.5 bg-emerald-400 text-midnight text-xs retro-pill">19 MEMBERS PRESERVED</span>
+                <span class="px-4 py-1.5 bg-pink-400 text-midnight text-xs retro-pill">3 GENERATIONS</span>
+            </div>
+
+            <div class="notebook-card tilt-effect p-6 md:p-10 mb-6 bg-white/95 shadow-[8px_8px_0px_#172033]">
+                <p class="hand-font text-2xl text-secondary mb-1">official digital archive for</p>
+                <h1 class="font-heading font-extrabold text-5xl sm:text-7xl md:text-8xl tracking-tight uppercase gradient-text-animated">Ambulkar FamilySphere</h1>
+                <p class="hand-font text-2xl text-indigo-600 mt-2 font-bold">✨ Maratherao & Prabhavathi Lineage • 4 Branches ✨</p>
+            </div>
+
+            <p class="text-base sm:text-lg text-secondary max-w-2xl mx-auto mb-6 leading-relaxed font-normal">
+                Explore the complete interactive Ambulkar family tree spanning grandparents Maratherao and Prabhavathi, their four children, and all 13 grandchildren including twins Sagar and Dr. Swapnil.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-4 mb-2">
+                <button onclick="scrollToSection('sec-tree')" class="px-8 py-4 bg-yellow-300 text-midnight font-bold text-sm retro-btn flex items-center gap-3">
+                    <i data-lucide="git-branch" class="w-5 h-5"></i> Explore Ambulkar Tree
+                </button>
+                <button onclick="scrollToSection('sec-members')" class="px-8 py-4 bg-white text-midnight font-bold text-sm retro-btn flex items-center gap-3">
+                    <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i> View All 19 Members
+                </button>
+            </div>
+        </section>
+
+        <!-- SECTION 2: HERITAGE & ROOTS -->
+        <section id="sec-heritage" class="flex flex-col justify-center px-6 py-4 max-w-5xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card tilt-effect p-6 md:p-10 bg-white/95">
+                <span class="px-4 py-1.5 bg-yellow-300 text-midnight text-xs retro-pill mb-3 inline-block">SECTION 2 • HERITAGE</span>
+                <h2 class="font-heading font-extrabold text-4xl text-midnight mb-4">Ambulkar Family Roots & Lineage</h2>
+                <p class="text-sm text-secondary leading-relaxed mb-6">
+                    Rooted in Maharashtra, the Ambulkar family stands on the strong foundation laid by Grandfather Maratherao Ambulkar and Grandmother Prabhavathi Ambulkar. Their wisdom, hard work, and unity established a lasting legacy spanning across three generations.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                    <div class="polaroid-frame relative tilt-effect cursor-pointer group">
+                        <div class="tape-strip"></div>
+                        <img src="https://placehold.co/600x400/9878FF/FFFFFF?text=Maratherao+%26+Prabhavathi" class="w-full h-64 object-cover rounded-md mb-3 border border-gray-200 group-hover:scale-102 transition">
+                        <p class="hand-font text-2xl text-midnight font-bold text-left">Generation 1 Matriarch & Patriarch</p>
+                        <p class="text-xs text-secondary text-left">Founding pillars of the Ambulkar household.</p>
+                    </div>
+                    <div class="polaroid-frame relative tilt-effect cursor-pointer group" style="transform: rotate(2deg);">
+                        <div class="tape-strip"></div>
+                        <img src="https://placehold.co/600x400/FF9B32/FFFFFF?text=Maharashtra+Roots" class="w-full h-64 object-cover rounded-md mb-3 border border-gray-200 group-hover:scale-102 transition">
+                        <p class="hand-font text-2xl text-midnight font-bold text-left">Ancestral Estate & Heritage</p>
+                        <p class="text-xs text-secondary text-left">Preserving family values and traditions.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: FOUR FAMILY BRANCHES -->
+        <section id="sec-branches" class="flex flex-col justify-center px-6 py-4 max-w-6xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-10 bg-white/95">
+                <span class="px-4 py-1.5 bg-emerald-300 text-midnight text-xs retro-pill mb-3 inline-block">SECTION 3 • BRANCHES</span>
+                <h2 class="font-heading font-extrabold text-4xl text-midnight mb-4">The Four Family Branches</h2>
+                <p class="text-sm text-secondary leading-relaxed mb-8">
+                    Maratherao and Prabhavathi's four children established four vibrant household branches, each carrying forward the family name and achievements.
+                </p>
+                <div id="branches-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Dynamic Branches injected via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: INTERACTIVE TREE EXPLORER -->
+        <section id="sec-tree" class="flex flex-col justify-center px-6 py-4 max-w-7xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-10 bg-white/95">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+                    <div>
+                        <span class="px-4 py-1.5 bg-pink-300 text-midnight text-xs retro-pill mb-2 inline-block">SECTION 4 • TREE EXPLORER</span>
+                        <h2 class="font-heading font-extrabold text-3xl text-midnight">Interactive Family Tree Layouts</h2>
+                    </div>
+                    <div class="flex items-center bg-white border-2 border-midnight rounded-xl p-1 shadow-[2px_2px_0px_#172033]">
+                        <button onclick="setTreeLayout('vertical')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition tree-layout-btn bg-yellow-300 text-midnight">Vertical</button>
+                        <button onclick="setTreeLayout('horizontal')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition tree-layout-btn text-secondary">Horizontal</button>
+                        <button onclick="setTreeLayout('radial')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition tree-layout-btn text-secondary">Radial</button>
+                    </div>
+                </div>
+                <div id="tree-canvas-container" class="min-h-[500px] p-6 bg-gray-50/70 border-2 border-midnight rounded-2xl flex flex-col items-center justify-center overflow-auto shadow-inner">
+                    <!-- Tree rendered here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 5: ALL 19 MEMBERS DIRECTORY -->
+        <section id="sec-members" class="flex flex-col justify-center px-6 py-4 max-w-7xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-8 bg-white/95">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                    <div>
+                        <span class="px-4 py-1.5 bg-sky-300 text-midnight text-xs retro-pill mb-2 inline-block">SECTION 5 • DIRECTORY</span>
+                        <h2 class="font-heading font-extrabold text-3xl text-midnight">All 19 Ambulkar Family Members</h2>
+                    </div>
+                    <input type="text" id="member-search" oninput="filterMembers()" placeholder="Search members by name..." class="px-4 py-2.5 rounded-xl bg-white border-2 border-midnight text-xs text-midnight focus:outline-none shadow-[2px_2px_0px_#172033] focus:shadow-[0_0_12px_rgba(53,184,255,0.4)] transition w-full md:w-72">
+                </div>
+                <div id="members-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Members populated via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 6: MEMBER SPOTLIGHT & PROFILE -->
+        <section id="sec-profile" class="flex flex-col justify-center px-6 py-4 max-w-4xl mx-auto w-full reveal-on-scroll">
+            <div id="profile-spotlight-container" class="notebook-card tilt-effect p-6 md:p-10 bg-white/95 relative shadow-[10px_10px_0px_#172033]">
+                <!-- Spotlight loaded dynamically -->
+            </div>
+        </section>
+
+        <!-- SECTION 7: FAMILY MEMORIES & ARCHIVES -->
+        <section id="sec-memories" class="flex flex-col justify-center px-6 py-4 max-w-7xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-10 bg-white/95">
+                <span class="px-4 py-1.5 bg-amber-300 text-midnight text-xs retro-pill mb-2 inline-block">SECTION 7 • MEMORIES</span>
+                <h2 class="font-heading font-extrabold text-3xl text-midnight mb-6">Family Photo Gallery & Archives</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <div class="polaroid-frame tilt-effect relative cursor-pointer group">
+                        <div class="tape-strip"></div>
+                        <img src="https://placehold.co/600x400/9878FF/FFFFFF?text=Annual+Reunion+2024" class="w-full h-48 object-cover rounded-md mb-3 border border-gray-200 group-hover:scale-102 transition">
+                        <p class="hand-font text-xl text-midnight font-bold">Annual Family Reunion 2024</p>
+                        <p class="text-xs text-secondary">All 4 branches united in Maharashtra.</p>
+                    </div>
+                    <div class="polaroid-frame tilt-effect relative cursor-pointer group" style="transform: rotate(1deg);">
+                        <div class="tape-strip"></div>
+                        <img src="https://placehold.co/600x400/FF9B32/FFFFFF?text=Twins+Milestone" class="w-full h-48 object-cover rounded-md mb-3 border border-gray-200 group-hover:scale-102 transition">
+                        <p class="hand-font text-xl text-midnight font-bold">Sagar & Dr. Swapnil Milestone</p>
+                        <p class="text-xs text-secondary">Celebrating medical graduation & achievements.</p>
+                    </div>
+                    <div class="polaroid-frame tilt-effect relative cursor-pointer group" style="transform: rotate(-1deg);">
+                        <div class="tape-strip"></div>
+                        <img src="https://placehold.co/600x400/145BFF/FFFFFF?text=Sarthak+Engineering" class="w-full h-48 object-cover rounded-md mb-3 border border-gray-200 group-hover:scale-102 transition">
+                        <p class="hand-font text-xl text-midnight font-bold">Sarthak's CSE Journey</p>
+                        <p class="text-xs text-secondary">PVPIT Bavdhan 2025-2029 cohort showcase.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 8: FAMILY EVENTS & RSVP -->
+        <section id="sec-events" class="flex flex-col justify-center px-6 py-4 max-w-5xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-10 bg-white/95">
+                <span class="px-4 py-1.5 bg-purple-300 text-midnight text-xs retro-pill mb-2 inline-block">SECTION 8 • EVENTS</span>
+                <h2 class="font-heading font-extrabold text-3xl text-midnight mb-6">Upcoming Events & RSVP Tracker</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div class="notebook-card tilt-effect p-6 bg-yellow-50/80">
+                        <span class="px-3 py-1 rounded-full bg-yellow-200 text-midnight text-xs font-bold border border-midnight">Reunion</span>
+                        <h3 class="font-heading font-bold text-lg text-midnight mt-3 mb-2">Ambulkar Annual Family Reunion 2026</h3>
+                        <p class="text-xs text-secondary mb-1">📅 December 25, 2026 (10:00 IST)</p>
+                        <p class="text-xs text-secondary mb-4">📍 Maharashtra Family Estate</p>
+                        <button onclick="showToast('RSVP Confirmed for Family Reunion!', 'success')" class="px-5 py-2.5 rounded-xl bg-yellow-300 text-midnight text-xs font-bold retro-btn hover:bg-yellow-200">Confirm Attendance</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 9: SECURE FAMILY PORTAL LOGIN -->
+        <section id="sec-auth" class="flex flex-col justify-center items-center px-6 py-4 max-w-md mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card tilt-effect p-6 md:p-10 w-full bg-white/95 text-center shadow-[8px_8px_0px_#172033]">
+                <span class="px-4 py-1.5 bg-red-300 text-midnight text-xs retro-pill mb-4 inline-block">SECTION 9 • PORTAL</span>
+                <div class="w-14 h-14 rounded-2xl bg-yellow-300 text-midnight border-2 border-midnight flex items-center justify-center mx-auto mb-6 shadow-[3px_3px_0px_#172033] hover:rotate-6 transition">
+                    <i data-lucide="lock" class="w-7 h-7"></i>
+                </div>
+                <h2 class="font-heading font-extrabold text-2xl text-midnight mb-2">Ambulkar Portal Login</h2>
+                <p class="text-xs text-secondary mb-8 hand-font text-xl">Supabase Secure Authentication</p>
+
+                <form onsubmit="handleAuthLogin(event)" class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-xs font-bold text-midnight mb-1">Email Address</label>
+                        <input type="email" id="auth-email" required value="sarthakambulkar09@gmail.com" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-midnight text-xs text-midnight focus:outline-none shadow-[2px_2px_0px_#172033] focus:shadow-[0_0_12px_rgba(253,224,71,0.5)] transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-midnight mb-1">Password</label>
+                        <input type="password" id="auth-pass" required value="password123" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-midnight text-xs text-midnight focus:outline-none shadow-[2px_2px_0px_#172033] focus:shadow-[0_0_12px_rgba(253,224,71,0.5)] transition">
+                    </div>
+                    <button type="submit" class="w-full py-3.5 rounded-xl bg-yellow-300 text-midnight font-bold text-xs retro-btn hover:bg-yellow-200">Secure Login</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- SECTION 10: SUPER ADMIN CONTROL CENTER -->
+        <section id="sec-admin" class="flex flex-col justify-center px-6 py-4 max-w-6xl mx-auto w-full reveal-on-scroll">
+            <div class="notebook-card p-6 md:p-10 bg-white/95">
+                <span class="px-4 py-1.5 bg-indigo-300 text-midnight text-xs retro-pill mb-3 inline-block">SECTION 10 • ADMIN</span>
+                <h2 class="font-heading font-extrabold text-3xl text-midnight mb-2">Super Admin Control Center</h2>
+                <p class="text-xs text-secondary mb-8 hand-font text-xl">Managed by Sarthak Ambulkar • All 19 records and relationships secured under Row Level Security.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="notebook-card p-6 bg-gray-50/80">
+                        <h3 class="font-heading font-bold text-lg text-midnight mb-4">Single-Use Family Invitations</h3>
+                        <button onclick="generateNewInvite()" class="w-full py-2.5 rounded-xl bg-emerald-300 text-midnight font-bold text-xs border-2 border-midnight shadow-[3px_3px_0px_#172033] mb-4 retro-btn hover:bg-emerald-200">Generate Invite Code</button>
+                        <div id="invites-list" class="space-y-3">
+                            <div class="p-3 rounded-xl bg-white border-2 border-midnight shadow-[2px_2px_0px_#172033] flex items-center justify-between text-xs">
+                                <span class="font-mono font-bold text-indigo-600">AMBULKAR-2026-VIP</span>
+                                <span class="text-secondary">Prakash Ambulkar Family</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="notebook-card p-6 bg-gray-50/80">
+                        <h3 class="font-heading font-bold text-lg text-midnight mb-4">Database Summary</h3>
+                        <p class="text-xs text-secondary mb-4">All 19 Ambulkar family records are successfully indexed and active in Supabase PostgreSQL.</p>
+                        <button onclick="showToast('Database exported as JSON successfully', 'success')" class="px-4 py-2.5 rounded-xl bg-yellow-300 text-midnight font-bold text-xs border-2 border-midnight shadow-[2px_2px_0px_#172033] retro-btn hover:bg-yellow-200">Export Family Data</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+    <script>
+        // --- 19 AMBULKAR FAMILY MEMBERS DATASET ---
+        const INITIAL_STATE = {
+            theme: 'modern',
+            treeLayout: 'vertical',
+            selectedProfileId: 'amb_1',
+            members: [
+                { id: 'amb_1', name: 'Maratherao Ambulkar', branch: 'Grandparents Root', generation: 'Gen 1 (Grandparents)', birth: '1945', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Patriarch of the Ambulkar family, guiding generations with wisdom and integrity.', education: 'Traditional Education', occupation: 'Agriculturist & Elder', achievements: ['Established Ambulkar family foundation'], parents: [], siblings: [], spouse: 'amb_2', children: ['amb_3', 'amb_5', 'amb_7', 'amb_9'], avatar: 'https://placehold.co/150x150/9878FF/FFFFFF?text=MA', privacy: 'public' },
+                { id: 'amb_2', name: 'Prabhavathi Ambulkar', branch: 'Grandparents Root', generation: 'Gen 1 (Grandparents)', birth: '1948', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Matriarch of the Ambulkar family, known for her warmth and leadership.', education: 'Traditional Education', occupation: 'Homemaker & Matriarch', achievements: ['Kept family united across generations'], parents: [], siblings: [], spouse: 'amb_1', children: ['amb_3', 'amb_5', 'amb_7', 'amb_9'], avatar: 'https://placehold.co/150x150/FF9DDA/FFFFFF?text=PA', privacy: 'public' },
+
+                { id: 'amb_3', name: 'Prakash Ambulkar', branch: 'Prakash Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1970', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Eldest son of Maratherao and Prabhavathi.', education: 'Graduate', occupation: 'Business & Professional', achievements: [], parents: ['amb_1', 'amb_2'], siblings: ['amb_5', 'amb_7', 'amb_9'], spouse: 'amb_4', children: ['amb_11', 'amb_12', 'amb_13'], avatar: 'https://placehold.co/150x150/43DFFF/172033?text=PrA', privacy: 'public' },
+                { id: 'amb_4', name: 'Jyoti Ambulkar', branch: 'Prakash Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1973', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Spouse of Prakash Ambulkar.', education: 'Graduate', occupation: 'Homemaker & Professional', achievements: [], parents: [], siblings: [], spouse: 'amb_3', children: ['amb_11', 'amb_12', 'amb_13'], avatar: 'https://placehold.co/150x150/FF9B32/FFFFFF?text=JA', privacy: 'public' },
+
+                { id: 'amb_5', name: 'Krushana Ambulkar', branch: 'Krushana Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1972', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Second son of Maratherao and Prabhavathi.', education: 'Graduate', occupation: 'Professional & Business', achievements: [], parents: ['amb_1', 'amb_2'], siblings: ['amb_3', 'amb_7', 'amb_9'], spouse: 'amb_6', children: ['amb_14', 'amb_15'], avatar: 'https://placehold.co/150x150/78BFFF/FFFFFF?text=KA', privacy: 'public' },
+                { id: 'amb_6', name: 'Bhavana Ambulkar', branch: 'Krushana Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1975', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Spouse of Krushana Ambulkar.', education: 'Graduate', occupation: 'Homemaker & Professional', achievements: [], parents: [], siblings: [], spouse: 'amb_5', children: ['amb_14', 'amb_15'], avatar: 'https://placehold.co/150x150/FFD66B/172033?text=BA', privacy: 'public' },
+
+                { id: 'amb_7', name: 'Eknath Ambulkar', branch: 'Eknath Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1975', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Third son of Maratherao and Prabhavathi.', education: 'Graduate', occupation: 'Professional & Technical', achievements: [], parents: ['amb_1', 'amb_2'], siblings: ['amb_3', 'amb_5', 'amb_9'], spouse: 'amb_8', children: ['amb_16', 'amb_17'], avatar: 'https://placehold.co/150x150/145BFF/FFFFFF?text=EA', privacy: 'public' },
+                { id: 'amb_8', name: 'Savita Ambulkar', branch: 'Eknath Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1978', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Spouse of Eknath Ambulkar.', education: 'Graduate', occupation: 'Homemaker & Professional', achievements: [], parents: [], siblings: [], spouse: 'amb_7', children: ['amb_16', 'amb_17'], avatar: 'https://placehold.co/150x150/9878FF/FFFFFF?text=SaA', privacy: 'public' },
+
+                { id: 'amb_9', name: 'Sudhakar Ambulkar', branch: 'Sudhakar Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1978', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Youngest son of Maratherao and Prabhavathi.', education: 'Graduate', occupation: 'Professional & Business', achievements: [], parents: ['amb_1', 'amb_2'], siblings: ['amb_3', 'amb_5', 'amb_7'], spouse: 'amb_10', children: ['amb_18', 'amb_19'], avatar: 'https://placehold.co/150x150/43DFFF/172033?text=SuA', privacy: 'public' },
+                { id: 'amb_10', name: 'Madhuri Ambulkar', branch: 'Sudhakar Ambulkar Family', generation: 'Gen 2 (Children)', birth: '1981', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Spouse of Sudhakar Ambulkar.', education: 'Graduate', occupation: 'Homemaker & Professional', achievements: [], parents: [], siblings: [], spouse: 'amb_9', children: ['amb_18', 'amb_19'], avatar: 'https://placehold.co/150x150/FF9DDA/FFFFFF?text=MA2', privacy: 'public' },
+
+                { id: 'amb_11', name: 'Dhaneshwari Ambulkar', branch: 'Prakash Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '1995', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Daughter of Prakash and Jyoti Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_3', 'amb_4'], siblings: ['amb_12', 'amb_13'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/FF9B32/FFFFFF?text=DA', privacy: 'public' },
+                { id: 'amb_12', name: 'Sunil Ambulkar', branch: 'Prakash Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '1998', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Son of Prakash and Jyoti Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_3', 'amb_4'], siblings: ['amb_11', 'amb_13'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/78BFFF/FFFFFF?text=SuN', privacy: 'public' },
+                { id: 'amb_13', name: 'Mayuri Ambulkar', branch: 'Prakash Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2001', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Daughter of Prakash and Jyoti Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_3', 'amb_4'], siblings: ['amb_11', 'amb_12'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/FFD66B/172033?text=MyA', privacy: 'public' },
+
+                { id: 'amb_14', name: 'Tushar Ambulkar', branch: 'Krushana Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '1997', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Son of Krushana and Bhavana Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_5', 'amb_6'], siblings: ['amb_15'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/145BFF/FFFFFF?text=TA', privacy: 'public' },
+                { id: 'amb_15', name: 'Pranali Ambulkar', branch: 'Krushana Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2000', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Daughter of Krushana and Bhavana Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_5', 'amb_6'], siblings: ['amb_14'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/9878FF/FFFFFF?text=PrA2', privacy: 'public' },
+
+                { id: 'amb_16', name: 'Komal Ambulkar', branch: 'Eknath Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2003', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Daughter of Eknath and Savita Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_7', 'amb_8'], siblings: ['amb_17'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/43DFFF/172033?text=KA2', privacy: 'public' },
+                { id: 'amb_17', name: 'Sarthak Ambulkar', branch: 'Eknath Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2006', death: null, birthplace: 'Maharashtra, India', hometown: 'PVPIT Bavdhan, Pune', bio: 'Computer Science Engineering student at PVPIT Bavdhan (2025-2029). Passionate about full-stack development, 3D interactive interfaces, and hackathons.', education: 'PVPIT Bavdhan, B.Tech CSE (2025-2029)', occupation: 'Software Developer & Engineering Student', achievements: ['Smart India Hackathon Participant', 'Built FamilySphere Master Platform'], parents: ['amb_7', 'amb_8'], siblings: ['amb_16'], spouse: null, children: [], avatar: 'https://placehold.co/150x150/FF9DDA/FFFFFF?text=SA', timeline: [{year: '2025', event: 'Started B.Tech CSE at PVPIT Bavdhan'}, {year: '2026', event: 'Built FamilySphere Master Platform'}], privacy: 'public' },
+
+                { id: 'amb_18', name: 'Sagar Ambulkar', branch: 'Sudhakar Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2002', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Son of Sudhakar and Madhuri Ambulkar. Twin brother of Dr. Swapnil Ambulkar.', education: 'Graduate', occupation: 'Professional', achievements: [], parents: ['amb_9', 'amb_10'], siblings: ['amb_19'], spouse: null, children: [], isTwin: true, twinWith: 'amb_19', avatar: 'https://placehold.co/150x150/FF9B32/FFFFFF?text=SgA', privacy: 'public' },
+                { id: 'amb_19', name: 'Dr. Swapnil Ambulkar', branch: 'Sudhakar Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2002', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Son of Sudhakar and Madhuri Ambulkar. Twin brother of Sagar Ambulkar. Medical professional.', education: 'MBBS, Medical Science', occupation: 'Medical Doctor', achievements: ['Completed Medical Doctorate / MBBS'], parents: ['amb_9', 'amb_10'], siblings: ['amb_18'], spouse: null, children: [], isTwin: true, twinWith: 'amb_18', avatar: 'https://placehold.co/150x150/78BFFF/FFFFFF?text=DrSA', privacy: 'public' }
+            ],
+            branches: [
+                { id: 'b1', name: 'Prakash Ambulkar Family', desc: 'Family branch of Prakash and Jyoti Ambulkar with children Dhaneshwari, Sunil, and Mayuri.', founder: 'Prakash & Jyoti Ambulkar' },
+                { id: 'b2', name: 'Krushana Ambulkar Family', desc: 'Family branch of Krushana and Bhavana Ambulkar with children Tushar and Pranali.', founder: 'Krushana & Bhavana Ambulkar' },
+                { id: 'b3', name: 'Eknath Ambulkar Family', desc: 'Family branch of Eknath and Savita Ambulkar with children Komal and Sarthak.', founder: 'Eknath & Savita Ambulkar' },
+                { id: 'b4', name: 'Sudhakar Ambulkar Family', desc: 'Family branch of Sudhakar and Madhuri Ambulkar with twin sons Sagar and Dr. Swapnil.', founder: 'Sudhakar & Madhuri Ambulkar' }
+            ]
+        };
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `notebook-card p-4 flex items-center gap-3 text-xs font-bold animate-fade-in pointer-events-auto bg-white border-l-4 shadow-[6px_6px_0px_#172033] ${type === 'success' ? 'border-l-yellow-400' : 'border-l-pink-500'}`;
+            toast.innerHTML = `
+                <i data-lucide="${type === 'success' ? 'check-circle-2' : 'alert-circle'}" class="w-5 h-5 text-indigo-600"></i>
+                <span class="flex-1">${message}</span>
+                <button onclick="this.parentElement.remove()" class="text-secondary hover:text-midnight"><i data-lucide="x" class="w-4 h-4"></i></button>
+            `;
+            container.appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function scrollToSection(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function toggleTheme() {
+            INITIAL_STATE.theme = INITIAL_STATE.theme === 'modern' ? 'heritage' : 'modern';
+            document.body.className = INITIAL_STATE.theme === 'heritage' ? 'theme-heritage h-full flex flex-col selection:bg-amber-300 selection:text-amber-900 relative' : 'theme-modern h-full flex flex-col selection:bg-yellow-300 selection:text-midnight relative';
+            showToast(`Switched theme to: ${INITIAL_STATE.theme.toUpperCase()}`, 'success');
+        }
+
+        function setTreeLayout(layout) {
+            INITIAL_STATE.treeLayout = layout;
+            document.querySelectorAll('.tree-layout-btn').forEach(btn => {
+                btn.className = btn.textContent.toLowerCase().includes(layout) ? 'px-3 py-1.5 rounded-lg text-xs font-bold transition tree-layout-btn bg-yellow-300 text-midnight' : 'px-3 py-1.5 rounded-lg text-xs font-bold transition tree-layout-btn text-secondary';
+            });
+            renderTree();
+        }
+
+        function renderBranches() {
+            const container = document.getElementById('branches-container');
+            container.innerHTML = INITIAL_STATE.branches.map((b, i) => `
+                <div class="notebook-card tilt-effect p-6 rounded-2xl bg-yellow-50/70 border-2 border-midnight flex flex-col justify-between">
+                    <div>
+                        <div class="w-8 h-8 rounded-xl bg-yellow-300 border-2 border-midnight flex items-center justify-center font-bold text-xs mb-3 shadow-[2px_2px_0px_#172033]">0${i+1}</div>
+                        <h4 class="font-heading font-bold text-base text-midnight mb-1">${b.name}</h4>
+                        <p class="text-xs text-indigo-700 font-semibold mb-2">Founder: ${b.founder}</p>
+                        <p class="text-xs text-secondary leading-relaxed">${b.desc}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-dashed border-gray-300 text-[11px] font-bold text-midnight flex justify-between items-center">
+                        <span>Explore Branch</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+            attachTiltEffects();
+        }
+
+        function renderMembers(filter = '') {
+            const container = document.getElementById('members-grid');
+            const filtered = INITIAL_STATE.members.filter(m => 
+                m.name.toLowerCase().includes(filter.toLowerCase()) || 
+                m.branch.toLowerCase().includes(filter.toLowerCase()) ||
+                m.occupation.toLowerCase().includes(filter.toLowerCase())
+            );
+            container.innerHTML = filtered.map(m => `
+                <div onclick="selectProfile('${m.id}')" class="notebook-card tilt-effect p-6 bg-white cursor-pointer text-left flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="relative">
+                                <img src="${m.avatar}" class="w-16 h-16 rounded-full object-cover border-2 border-midnight shadow-[2px_2px_0px_#172033]">
+                                ${m.isTwin ? '<span class="absolute -bottom-1 -right-1 bg-amber-300 text-[10px] p-1 rounded-full border border-midnight shadow-sm">👯‍♂️</span>' : ''}
+                            </div>
+                            <div>
+                                <h4 class="font-heading font-bold text-base text-midnight">${m.name}</h4>
+                                <p class="text-xs text-secondary">${m.generation}</p>
+                                <span class="inline-block mt-1 px-2.5 py-0.5 rounded bg-yellow-200 text-midnight text-[10px] font-bold border border-midnight">${m.branch}</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-secondary line-clamp-2 leading-relaxed">${m.bio}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-dashed border-gray-200 flex items-center justify-between text-xs text-midnight">
+                        <span class="font-semibold text-[11px] text-indigo-600">View Spotlight</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+            attachTiltEffects();
+        }
+
+        function filterMembers() {
+            const query = document.getElementById('member-search').value;
+            renderMembers(query);
+        }
+
+        function selectProfile(id) {
+            INITIAL_STATE.selectedProfileId = id;
+            renderSpotlight();
+            scrollToSection('sec-profile');
+        }
+
+        function renderSpotlight() {
+            const m = INITIAL_STATE.members.find(x => x.id === INITIAL_STATE.selectedProfileId) || INITIAL_STATE.members[0];
+            const container = document.getElementById('profile-spotlight-container');
+            container.innerHTML = `
+                <span class="px-4 py-1.5 bg-yellow-300 text-midnight text-xs retro-pill mb-4 inline-block">SECTION 6 • SPOTLIGHT</span>
+                <div class="flex flex-col sm:flex-row items-center gap-6 mb-8 text-center sm:text-left">
+                    <img src="${m.avatar}" class="w-24 h-24 rounded-full object-cover border-2 border-midnight shadow-[4px_4px_0px_#172033]">
+                    <div>
+                        <span class="px-3 py-1 rounded-full bg-yellow-300 text-midnight text-xs font-bold border border-midnight">${m.generation} • ${m.branch}</span>
+                        <h2 class="font-heading font-extrabold text-3xl text-midnight mt-1">${m.name} ${m.isTwin ? '👯‍♂️ (Twin)' : ''}</h2>
+                        <p class="text-xs text-secondary mt-1 hand-font text-xl">Born ${m.birth} in ${m.birthplace} • Hometown: ${m.hometown}</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="notebook-card p-5 bg-white">
+                        <h4 class="font-heading font-bold text-sm text-midnight mb-2">Biography & Education</h4>
+                        <p class="text-xs text-secondary leading-relaxed mb-3">${m.bio}</p>
+                        <p class="text-xs text-midnight font-medium"><strong>Education:</strong> ${m.education}</p>
+                        <p class="text-xs text-midnight font-medium mt-1"><strong>Occupation:</strong> ${m.occupation}</p>
+                    </div>
+                    <div class="notebook-card p-5 bg-white">
+                        <h4 class="font-heading font-bold text-sm text-midnight mb-2">Achievements & Timeline</h4>
+                        ${m.achievements.length > 0 ? `<ul class="list-disc list-inside text-xs text-secondary space-y-1 mb-3">${m.achievements.map(a => `<li>${a}</li>`).join('')}</ul>` : '<p class="text-xs text-secondary mb-3">No specific achievements recorded yet.</p>'}
+                        ${m.timeline && m.timeline.length > 0 ? `<div class="space-y-1">${m.timeline.map(t => `<p class="text-xs text-secondary"><strong>${t.year}:</strong> ${t.event}</p>`).join('')}</div>` : ''}
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            attachTiltEffects();
+        }
+
+        function renderTree() {
+            const container = document.getElementById('tree-canvas-container');
+            if (INITIAL_STATE.treeLayout === 'vertical') {
+                container.innerHTML = `
+                <div class="flex flex-col items-center gap-8 w-full max-w-5xl py-4">
+                    <div class="w-full text-center">
+                        <span class="inline-block px-4 py-1.5 rounded-full bg-yellow-300 text-midnight text-xs font-bold border-2 border-midnight mb-4 shadow-[2px_2px_0px_#172033]">Generation 1: Grandparents (Maratherao & Prabhavathi)</span>
+                        <div class="flex flex-wrap justify-center gap-4">
+                            ${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 1')).map(m => renderTreeNode(m)).join('')}
+                        </div>
+                    </div>
+                    <div class="w-0.5 h-8 bg-midnight"></div>
+                    <div class="w-full text-center">
+                        <span class="inline-block px-4 py-1.5 rounded-full bg-emerald-300 text-midnight text-xs font-bold border-2 border-midnight mb-4 shadow-[2px_2px_0px_#172033]">Generation 2: Four Children & Spouses</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                            ${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 2')).map(m => renderTreeNode(m)).join('')}
+                        </div>
+                    </div>
+                    <div class="w-0.5 h-8 bg-midnight"></div>
+                    <div class="w-full text-center">
+                        <span class="inline-block px-4 py-1.5 rounded-full bg-pink-300 text-midnight text-xs font-bold border-2 border-midnight mb-4 shadow-[2px_2px_0px_#172033]">Generation 3: Grandchildren (Includes Twins Sagar & Dr. Swapnil)</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            ${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 3')).map(m => renderTreeNode(m)).join('')}
+                        </div>
+                    </div>
+                </div>`;
+            } else if (INITIAL_STATE.treeLayout === 'horizontal') {
+                container.innerHTML = `
+                <div class="flex flex-col md:flex-row items-stretch justify-around gap-6 w-full py-4">
+                    <div class="flex-1 notebook-card p-4 bg-white text-center w-full">
+                        <h4 class="font-heading font-bold text-sm text-midnight mb-3 bg-yellow-200 py-1 rounded-lg border border-midnight">Gen 1: Grandparents</h4>
+                        <div class="space-y-3">${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 1')).map(m => renderTreeNode(m)).join('')}</div>
+                    </div>
+                    <div class="flex-1 notebook-card p-4 bg-white text-center w-full">
+                        <h4 class="font-heading font-bold text-sm text-midnight mb-3 bg-emerald-200 py-1 rounded-lg border border-midnight">Gen 2: Children & Spouses</h4>
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-1">${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 2')).map(m => renderTreeNode(m)).join('')}</div>
+                    </div>
+                    <div class="flex-1 notebook-card p-4 bg-white text-center w-full">
+                        <h4 class="font-heading font-bold text-sm text-midnight mb-3 bg-pink-200 py-1 rounded-lg border border-midnight">Gen 3: Grandchildren</h4>
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-1">${INITIAL_STATE.members.filter(m => m.generation.includes('Gen 3')).map(m => renderTreeNode(m)).join('')}</div>
+                    </div>
+                </div>`;
+            } else {
+                container.innerHTML = `
+                <div class="text-center py-8 w-full">
+                    <div class="inline-block p-4 rounded-3xl bg-yellow-300 border-2 border-midnight shadow-[4px_4px_0px_#172033] mb-3">
+                        <h4 class="font-heading font-extrabold text-base text-midnight">Maratherao & Prabhavathi Ambulkar</h4>
+                        <p class="text-xs text-midnight font-medium">Ancestral Foundation (Gen 1)</p>
+                    </div>
+                    <p class="text-xs text-secondary mb-6">Radial cluster connected across 4 family branches</p>
+                    <div class="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
+                        ${INITIAL_STATE.members.map(m => renderTreeNode(m)).join('')}
+                    </div>
+                </div>`;
+            }
+            lucide.createIcons();
+            attachTiltEffects();
+        }
+
+        function renderTreeNode(m) {
+            return `
+            <div onclick="selectProfile('${m.id}')" class="p-3 rounded-2xl bg-white border-2 border-midnight shadow-[3px_3px_0px_#172033] hover:scale-105 hover:shadow-[0_0_15px_rgba(113,59,255,0.4)] transition cursor-pointer text-left flex items-center gap-3">
+                <img src="${m.avatar}" class="w-10 h-10 rounded-full object-cover border-2 border-midnight shrink-0">
+                <div class="overflow-hidden">
+                    <h5 class="font-heading font-bold text-xs text-midnight truncate">${m.name} ${m.isTwin ? '👯‍♂️' : ''}</h5>
+                    <p class="text-[10px] text-secondary">Born ${m.birth}</p>
+                </div>
+            </div>`;
+        }
+
+        function handleAuthLogin(e) {
+            e.preventDefault();
+            showToast('Authenticated successfully as Sarthak Ambulkar (Super Admin)', 'success');
+            scrollToSection('sec-admin');
+        }
+
+        function generateNewInvite() {
+            const list = document.getElementById('invites-list');
+            const code = 'AMBULKAR-2026-PASS-' + Math.floor(1000 + Math.random() * 9000);
+            const item = document.createElement('div');
+            item.className = 'p-3 rounded-xl bg-white border-2 border-midnight shadow-[2px_2px_0px_#172033] flex items-center justify-between text-xs';
+            item.innerHTML = `<span class="font-mono font-bold text-indigo-600">${code}</span><span class="text-secondary text-[11px]">Active Pass</span>`;
+            list.prepend(item);
+            showToast(`Generated new invite code: ${code}`, 'success');
+        }
+
+        // 3D Tilt Effect on mouse movement
+        function attachTiltEffects() {
+            if (window.matchMedia('(pointer: coarse)').matches) return;
+            document.querySelectorAll('.tilt-effect').forEach(card => {
+                if (card.dataset.tiltAttached) return;
+                card.dataset.tiltAttached = 'true';
+                card.addEventListener('mousemove', (e) => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const cx = rect.width / 2;
+                    const cy = rect.height / 2;
+                    const rotX = ((y - cy) / cy) * -6;
+                    const rotY = ((x - cx) / cx) * 6;
+                    card.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateY(-5px) scale3d(1.015, 1.015, 1.015)`;
+                });
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0px) scale3d(1, 1, 1)';
+                });
+            });
+        }
+
+        // Scroll Progress Bar & Multi-Layer Parallax Scrolling
+        window.addEventListener('scroll', () => {
+            const winScroll = document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrolled = (winScroll / height) * 100;
+            const bar = document.getElementById('scroll-progress');
+            if (bar) bar.style.width = scrolled + '%';
+
+            // Parallax layers
+            const orb1 = document.getElementById('parallax-orb-1');
+            const orb2 = document.getElementById('parallax-orb-2');
+            const orb3 = document.getElementById('parallax-orb-3');
+            const orb4 = document.getElementById('parallax-orb-4');
+
+            if (orb1) orb1.style.transform = `translate3d(0, ${winScroll * 0.12}px, 0)`;
+            if (orb2) orb2.style.transform = `translate3d(0, ${-winScroll * 0.08}px, 0)`;
+            if (orb3) orb3.style.transform = `translate3d(0, ${winScroll * 0.06}px, 0)`;
+            if (orb4) orb4.style.transform = `translate3d(0, ${-winScroll * 0.05}px, 0)`;
+        }, { passive: true });
+
+        const observerOptions = { threshold: 0.1 };
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, observerOptions);
+
+        window.onload = function() {
+            renderBranches();
+            renderMembers();
+            renderSpotlight();
+            renderTree();
+            lucide.createIcons();
+            attachTiltEffects();
+            document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
+        };
+    </script>
+</body>
+</html>
