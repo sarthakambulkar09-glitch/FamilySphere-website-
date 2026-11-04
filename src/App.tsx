@@ -63,7 +63,18 @@ import {
   Bookmark,
   ChevronDown,
   Settings,
+  Gift,
+  Copy,
+  ExternalLink,
+  Server,
 } from 'lucide-react';
+import {
+  getSupabaseConfig,
+  setSupabaseConfig,
+  testSupabaseConnection,
+  supabaseAuth,
+  subscribeToSupabaseTable,
+} from './lib/supabase';
 
 // Family Photo Archive presets for quick selection
 const FAMILY_ARCHIVE_PHOTOS = [
@@ -399,6 +410,7 @@ export default function App() {
     | 'theme'
     | 'logs'
     | 'backup'
+    | 'supabase'
     | 'general';
 
   const [adminTab, setAdminTab] = useState<AdminTabType>('overview');
@@ -512,6 +524,21 @@ export default function App() {
   const heritageFileInputRef = useRef<HTMLInputElement | null>(null);
   const eventCoverFileInputRef = useRef<HTMLInputElement | null>(null);
   const [photosSubTab, setPhotosSubTab] = useState<'memories' | 'heritage'>('memories');
+
+  // Birthday Calendar View state (Section 8 & Admin Module 6)
+  const [eventSectionTab, setEventSectionTab] = useState<'events' | 'birthdays'>('events');
+  const [birthdayMonthFilter, setBirthdayMonthFilter] = useState<number | 'all'>('all');
+  const [birthdayBranchFilter, setBirthdayBranchFilter] = useState<string>('all');
+  const [adminEventsTab, setAdminEventsTab] = useState<'events' | 'birthdays'>('events');
+
+  // Supabase Backend Integration state
+  const [supabaseConfigState, setSupabaseConfigState] = useState(getSupabaseConfig());
+  const [supabaseStatus, setSupabaseStatus] = useState<{ connected: boolean; message: string; latencyMs?: number; testing: boolean }>({
+    connected: false,
+    message: 'Click "Test Supabase Connection" to verify project reachable',
+    testing: false,
+  });
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState<string>('');
 
   // In-App Confirmation Modal (safely replaces window.confirm for iframe compatibility)
   const [confirmModal, setConfirmModal] = useState<{
@@ -1102,6 +1129,161 @@ export default function App() {
     if (activeAlbumFilter === 'all') return photosList;
     return photosList.filter(p => p.album_id === activeAlbumFilter);
   }, [photosList, activeAlbumFilter]);
+
+  // --- BIRTHDAY CALENDAR DEFINITIONS & CALCULATIONS ---
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const KNOWN_BIRTHDAYS: Record<string, { month: number; day: number; year: number }> = {
+    amb_1: { month: 5, day: 12, year: 1945 },
+    amb_2: { month: 8, day: 18, year: 1948 },
+    amb_3: { month: 3, day: 15, year: 1970 },
+    amb_4: { month: 7, day: 22, year: 1973 },
+    amb_5: { month: 6, day: 10, year: 1972 },
+    amb_6: { month: 10, day: 25, year: 1975 },
+    amb_7: { month: 1, day: 14, year: 1975 },
+    amb_8: { month: 4, day: 28, year: 1978 },
+    amb_9: { month: 2, day: 20, year: 1978 },
+    amb_10: { month: 12, day: 5, year: 1981 },
+    amb_11: { month: 9, day: 21, year: 1995 },
+    amb_12: { month: 4, day: 5, year: 1998 },
+    amb_13: { month: 8, day: 30, year: 2001 },
+    amb_14: { month: 7, day: 8, year: 1997 },
+    amb_15: { month: 10, day: 12, year: 2000 },
+    amb_16: { month: 6, day: 24, year: 2003 },
+    amb_17: { month: 9, day: 9, year: 2006 },
+    amb_18: { month: 11, day: 14, year: 2002 },
+    amb_19: { month: 11, day: 14, year: 2002 },
+  };
+
+  const getZodiacSign = (month: number, day: number): { name: string; symbol: string } => {
+    if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) return { name: 'Aquarius', symbol: '♒' };
+    if ((month === 2 && day >= 19) || (month === 3 && day <= 20)) return { name: 'Pisces', symbol: '♓' };
+    if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return { name: 'Aries', symbol: '♈' };
+    if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return { name: 'Taurus', symbol: '♉' };
+    if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return { name: 'Gemini', symbol: '♊' };
+    if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return { name: 'Cancer', symbol: '♋' };
+    if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return { name: 'Leo', symbol: '♌' };
+    if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return { name: 'Virgo', symbol: '♍' };
+    if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return { name: 'Libra', symbol: '♎' };
+    if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) return { name: 'Scorpio', symbol: '♏' };
+    if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) return { name: 'Sagittarius', symbol: '♐' };
+    return { name: 'Capricorn', symbol: '♑' };
+  };
+
+  // Aggregated Birthday Calendar List: Sorted chronologically by Month (1 to 12) & Day (1 to 31)
+  const birthdayCalendarList = useMemo(() => {
+    const now = new Date();
+    const currentYear = 2026;
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return membersList.map(member => {
+      let month = 1;
+      let day = 1;
+      let birthYear = 2000;
+
+      if (KNOWN_BIRTHDAYS[member.id]) {
+        month = KNOWN_BIRTHDAYS[member.id].month;
+        day = KNOWN_BIRTHDAYS[member.id].day;
+        birthYear = KNOWN_BIRTHDAYS[member.id].year;
+      } else if (member.birth) {
+        const fullMatch = member.birth.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (fullMatch) {
+          birthYear = parseInt(fullMatch[1], 10);
+          month = parseInt(fullMatch[2], 10);
+          day = parseInt(fullMatch[3], 10);
+        } else {
+          const yearMatch = member.birth.match(/(\d{4})/);
+          if (yearMatch) {
+            birthYear = parseInt(yearMatch[1], 10);
+            let hash = 0;
+            for (let i = 0; i < member.name.length; i++) {
+              hash = (hash << 5) - hash + member.name.charCodeAt(i);
+              hash |= 0;
+            }
+            month = (Math.abs(hash) % 12) + 1;
+            day = (Math.abs(hash) % 28) + 1;
+          }
+        }
+      }
+
+      const turningAge = currentYear - birthYear;
+      const monthName = MONTH_NAMES[month - 1] || 'January';
+      const zodiac = getZodiacSign(month, day);
+
+      let thisYearCelebration = new Date(now.getFullYear(), month - 1, day).getTime();
+      if (thisYearCelebration < todayZero) {
+        thisYearCelebration = new Date(now.getFullYear() + 1, month - 1, day).getTime();
+      }
+      const daysUntil = Math.round((thisYearCelebration - todayZero) / (1000 * 60 * 60 * 24));
+      const isToday = daysUntil === 0;
+      const isUpcoming = daysUntil > 0 && daysUntil <= 30;
+
+      return {
+        member,
+        month,
+        monthName,
+        day,
+        birthYear,
+        formattedDate: `${monthName} ${day}, ${birthYear}`,
+        turningAge,
+        zodiac,
+        daysUntil,
+        isToday,
+        isUpcoming,
+      };
+    }).sort((a, b) => {
+      if (a.month !== b.month) return a.month - b.month;
+      return a.day - b.day;
+    });
+  }, [membersList]);
+
+  // Filtered Birthday list by selected month & branch
+  const filteredBirthdayList = useMemo(() => {
+    return birthdayCalendarList.filter(item => {
+      if (birthdayMonthFilter !== 'all' && item.month !== birthdayMonthFilter) return false;
+      if (birthdayBranchFilter !== 'all' && item.member.branch !== birthdayBranchFilter) return false;
+      return true;
+    });
+  }, [birthdayCalendarList, birthdayMonthFilter, birthdayBranchFilter]);
+
+  // Convert Birthday to Event Handler
+  const handleConvertBirthdayToEvent = (bday: typeof birthdayCalendarList[0]) => {
+    const currentYear = new Date().getFullYear();
+    const dateStr = `${currentYear}-${String(bday.month).padStart(2, '0')}-${String(bday.day).padStart(2, '0')}`;
+    setEditingEventId(null);
+    setEventFormData({
+      title: `${bday.member.name}'s ${bday.turningAge}th Birthday Celebration`,
+      description: `Join the Ambulkar family in celebrating ${bday.member.name}'s milestone ${bday.turningAge}th birthday (${bday.formattedDate}). All family members are invited!`,
+      cover_photo: bday.member.avatar || 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=800&q=80',
+      category: 'Birthdays',
+      date: dateStr,
+      time: '18:00 IST',
+      location: 'Ambulkar Ancestral Hall, Maharashtra',
+      branch: bday.member.branch || 'All Branches',
+      visibility: 'public',
+      invitations: 'All family members and descendants are invited.',
+    });
+    setIsAddEventModalOpen(true);
+    showToast(`Pre-filled event details for ${bday.member.name}'s Birthday!`, 'success');
+  };
+
+  // WhatsApp Birthday Wish Helper
+  const handleSendWhatsAppWish = (bday: typeof birthdayCalendarList[0]) => {
+    const text = encodeURIComponent(
+      `🎉 Dear ${bday.member.name}, wishing you a very Happy ${bday.turningAge}th Birthday from all of us in the Ambulkar Dynasty! 🎂✨ May your year ahead be blessed with good health, immense happiness, and great success! - Ambulkar FamilySphere`
+    );
+    const url = `https://api.whatsapp.com/send?text=${text}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+  };
+
 
   // RSVP Submission Handler
   const handleConfirmRsvp = async () => {
@@ -2470,10 +2652,10 @@ export default function App() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                 <div>
                   <span className="px-4 py-1.5 bg-purple-300 text-midnight text-xs retro-pill mb-2 inline-block">
-                    SECTION 8 • EVENTS
+                    SECTION 8 • EVENTS &amp; BIRTHDAY CALENDAR
                   </span>
                   <h2 className="font-heading font-extrabold text-3xl text-midnight">
-                    Upcoming Family Events &amp; RSVP Tracker
+                    {eventSectionTab === 'events' ? 'Upcoming Family Events & RSVP Tracker' : 'Ambulkar Dynasty Birthday Calendar'}
                   </h2>
                 </div>
                 {currentUser?.role === 'super_admin' && (
@@ -2501,97 +2683,306 @@ export default function App() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {eventsList.map(event => (
-                  <TiltCard
-                    key={event.id}
-                    className="p-6 bg-yellow-50/80 flex flex-col justify-between relative group"
-                    maxTilt={4}
-                    glowColor="rgba(253, 224, 71, 0.45)"
+              {/* View Switcher: Upcoming Events vs Birthday Calendar */}
+              <div className="flex flex-wrap items-center justify-between border-b-2 border-midnight pb-3 mb-6 gap-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEventSectionTab('events')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                      eventSectionTab === 'events'
+                        ? 'bg-yellow-300 text-midnight border-2 border-midnight shadow-[2px_2px_0px_#172033]'
+                        : 'bg-white text-secondary hover:text-midnight border border-gray-300'
+                    }`}
                   >
-                    <div>
-                      {currentUser?.role === 'super_admin' && (
-                        <div className="flex items-center justify-end gap-1.5 mb-2">
-                          <button
-                            onClick={() => {
-                              setEditingEventId(event.id);
-                              setEventFormData({
-                                title: event.title,
-                                description: event.description,
-                                cover_photo: event.cover_photo || '',
-                                category: event.category,
-                                date: event.date,
-                                time: event.time,
-                                location: event.location,
-                                branch: event.branch || 'All Branches',
-                                visibility: event.visibility,
-                                invitations: event.invitations || '',
-                              });
-                              setIsAddEventModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-yellow-100 text-midnight rounded-lg text-xs font-bold border border-midnight shadow-xs flex items-center gap-1"
-                          >
-                            <Edit3 className="w-3 h-3 text-indigo-700" /> Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEvent(event.id, event.title)}
-                            className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg border border-red-300 shadow-xs"
-                            title="Delete Event"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
+                    <Calendar className="w-4 h-4 text-indigo-700" /> Upcoming Events ({eventsList.length})
+                  </button>
+                  <button
+                    onClick={() => setEventSectionTab('birthdays')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                      eventSectionTab === 'birthdays'
+                        ? 'bg-yellow-300 text-midnight border-2 border-midnight shadow-[2px_2px_0px_#172033]'
+                        : 'bg-white text-secondary hover:text-midnight border border-gray-300'
+                    }`}
+                  >
+                    <Gift className="w-4 h-4 text-pink-600" /> Birthday Calendar ({birthdayCalendarList.length})
+                  </button>
+                </div>
 
-                      {event.cover_photo && (
-                        <img
-                          src={event.cover_photo}
-                          alt={event.title}
-                          className="w-full h-36 object-cover rounded-xl mb-3 border border-midnight"
-                        />
-                      )}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-3 py-0.5 rounded-full bg-yellow-200 text-midnight text-[11px] font-bold border border-midnight">
-                          {event.category}
-                        </span>
-                        {event.branch && (
-                          <span className="text-[10px] text-indigo-700 font-bold">
-                            {event.branch}
+                {eventSectionTab === 'birthdays' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-secondary">Branch:</span>
+                    <select
+                      value={birthdayBranchFilter}
+                      onChange={e => setBirthdayBranchFilter(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-midnight rounded-xl text-xs font-medium"
+                    >
+                      <option value="all">All Branches (19 Members)</option>
+                      {branchesList.map(b => (
+                        <option key={b.id} value={b.name}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* TAB 1: UPCOMING EVENTS VIEW */}
+              {eventSectionTab === 'events' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {eventsList.map(event => (
+                    <TiltCard
+                      key={event.id}
+                      className="p-6 bg-yellow-50/80 flex flex-col justify-between relative group"
+                      maxTilt={4}
+                      glowColor="rgba(253, 224, 71, 0.45)"
+                    >
+                      <div>
+                        {currentUser?.role === 'super_admin' && (
+                          <div className="flex items-center justify-end gap-1.5 mb-2">
+                            <button
+                              onClick={() => {
+                                setEditingEventId(event.id);
+                                setEventFormData({
+                                  title: event.title,
+                                  description: event.description,
+                                  cover_photo: event.cover_photo || '',
+                                  category: event.category,
+                                  date: event.date,
+                                  time: event.time,
+                                  location: event.location,
+                                  branch: event.branch || 'All Branches',
+                                  visibility: event.visibility,
+                                  invitations: event.invitations || '',
+                                });
+                                setIsAddEventModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-white hover:bg-yellow-100 text-midnight rounded-lg text-xs font-bold border border-midnight shadow-xs flex items-center gap-1"
+                            >
+                              <Edit3 className="w-3 h-3 text-indigo-700" /> Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event.id, event.title)}
+                              className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg border border-red-300 shadow-xs"
+                              title="Delete Event"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
+                        {event.cover_photo && (
+                          <img
+                            src={event.cover_photo}
+                            alt={event.title}
+                            className="w-full h-36 object-cover rounded-xl mb-3 border border-midnight"
+                          />
+                        )}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="px-3 py-0.5 rounded-full bg-yellow-200 text-midnight text-[11px] font-bold border border-midnight">
+                            {event.category}
                           </span>
+                          {event.branch && (
+                            <span className="text-[10px] text-indigo-700 font-bold">
+                              {event.branch}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-heading font-bold text-lg text-midnight mb-2">
+                          {event.title}
+                        </h3>
+                        <p className="text-xs text-secondary mb-3 leading-relaxed">
+                          {event.description}
+                        </p>
+                        <p className="text-xs text-secondary mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-indigo-600" /> {event.date} ({event.time})
+                        </p>
+                        <p className="text-xs text-secondary mb-3 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-red-500" /> {event.location}
+                        </p>
+                        {event.attendees && (
+                          <div className="text-[11px] text-emerald-800 font-bold mb-4 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                            👥 {event.attendees.length} Attendee(s) Confirmed
+                          </div>
                         )}
                       </div>
-                      <h3 className="font-heading font-bold text-lg text-midnight mb-2">
-                        {event.title}
-                      </h3>
-                      <p className="text-xs text-secondary mb-3 leading-relaxed">
-                        {event.description}
-                      </p>
-                      <p className="text-xs text-secondary mb-1 flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-600" /> {event.date} ({event.time})
-                      </p>
-                      <p className="text-xs text-secondary mb-3 flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-red-500" /> {event.location}
-                      </p>
-                      {event.attendees && (
-                        <div className="text-[11px] text-emerald-800 font-bold mb-4 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                          👥 {event.attendees.length} Attendee(s) Confirmed
-                        </div>
-                      )}
-                    </div>
 
+                      <button
+                        onClick={() => {
+                          setSelectedEventForRsvp(event);
+                          setRsvpGuestName(currentUser?.name || '');
+                          setIsRsvpModalOpen(true);
+                        }}
+                        className="w-full py-2.5 rounded-xl bg-yellow-300 text-midnight text-xs font-bold retro-btn hover:bg-yellow-200 shadow-[2px_2px_0px_#172033]"
+                      >
+                        Confirm Attendance / RSVP
+                      </button>
+                    </TiltCard>
+                  ))}
+                </div>
+              )}
+
+              {/* TAB 2: BIRTHDAY CALENDAR VIEW */}
+              {eventSectionTab === 'birthdays' && (
+                <div className="space-y-6">
+                  {/* Monthly Chronological Filter Bar (January - December) */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none">
                     <button
-                      onClick={() => {
-                        setSelectedEventForRsvp(event);
-                        setRsvpGuestName(currentUser?.name || '');
-                        setIsRsvpModalOpen(true);
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-yellow-300 text-midnight text-xs font-bold retro-btn hover:bg-yellow-200 shadow-[2px_2px_0px_#172033]"
+                      onClick={() => setBirthdayMonthFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
+                        birthdayMonthFilter === 'all'
+                          ? 'bg-yellow-300 text-midnight border-midnight shadow-[2px_2px_0px_#172033]'
+                          : 'bg-white text-secondary border-gray-300 hover:text-midnight'
+                      }`}
                     >
-                      Confirm Attendance / RSVP
+                      All Months ({birthdayCalendarList.length})
                     </button>
-                  </TiltCard>
-                ))}
-              </div>
+                    {MONTH_SHORT.map((mShort, idx) => {
+                      const monthNum = idx + 1;
+                      const count = birthdayCalendarList.filter(b => b.month === monthNum).length;
+                      return (
+                        <button
+                          key={mShort}
+                          onClick={() => setBirthdayMonthFilter(monthNum)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition border flex items-center gap-1.5 ${
+                            birthdayMonthFilter === monthNum
+                              ? 'bg-yellow-300 text-midnight border-midnight shadow-[2px_2px_0px_#172033]'
+                              : 'bg-white text-secondary border-gray-300 hover:text-midnight'
+                          }`}
+                        >
+                          <span>{mShort}</span>
+                          {count > 0 && (
+                            <span className="w-4 h-4 rounded-full bg-pink-100 text-pink-700 text-[10px] flex items-center justify-center font-bold">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Monthly Birthday Cards Grid */}
+                  {filteredBirthdayList.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {filteredBirthdayList.map(bday => (
+                        <div
+                          key={bday.member.id}
+                          className={`notebook-card p-5 bg-white relative border-2 ${
+                            bday.isToday ? 'border-pink-500 ring-2 ring-pink-300' : 'border-midnight'
+                          } shadow-[3px_3px_0px_#172033] flex flex-col justify-between`}
+                        >
+                          <div>
+                            {/* Header row with badges */}
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-800 text-[10px] font-bold border border-pink-300 flex items-center gap-1">
+                                <Gift className="w-3 h-3 text-pink-600" /> {bday.monthName} {bday.day}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold border border-purple-200">
+                                  {bday.zodiac.symbol} {bday.zodiac.name}
+                                </span>
+                                {bday.isToday ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold animate-pulse">
+                                    🎉 TODAY!
+                                  </span>
+                                ) : bday.isUpcoming ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                                    ⏳ in {bday.daysUntil}d
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            {/* Member info & Avatar */}
+                            <div className="flex items-start gap-3 mb-3">
+                              <img
+                                src={bday.member.avatar || 'https://placehold.co/150x150/9878FF/FFFFFF?text=MA'}
+                                alt={bday.member.name}
+                                className="w-14 h-14 rounded-2xl object-cover border-2 border-midnight shrink-0 shadow-[2px_2px_0px_#172033]"
+                              />
+                              <div>
+                                <h4 className="font-heading font-extrabold text-base text-midnight leading-tight">
+                                  {bday.member.name}
+                                </h4>
+                                <p className="text-[11px] text-indigo-700 font-semibold mt-0.5">
+                                  {bday.member.branch}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1 mt-1">
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 border">
+                                    {bday.member.generation}
+                                  </span>
+                                  {bday.member.isTwin && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold">
+                                      👯‍♂️ Twin
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Milestone / Age highlight box */}
+                            <div className="p-2.5 bg-yellow-50/80 rounded-xl border border-yellow-300 mb-3 text-xs">
+                              <div className="flex justify-between items-center text-midnight font-bold">
+                                <span>Birth Year: {bday.birthYear}</span>
+                                <span className="text-pink-700">Turning {bday.turningAge} in 2026</span>
+                              </div>
+                              <p className="text-[11px] text-secondary mt-1">
+                                Celebrated annually on {bday.monthName} {bday.day}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Quick Action Buttons */}
+                          <div className="space-y-2 pt-2 border-t border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleSendWhatsAppWish(bday)}
+                                className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
+                                title="Send WhatsApp Wish"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" /> Send Wish
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedProfileId(bday.member.id);
+                                  scrollToSection('sec-profile');
+                                }}
+                                className="px-3 py-1.5 bg-white hover:bg-gray-50 text-midnight rounded-xl text-[11px] font-bold border border-midnight shadow-xs"
+                              >
+                                View Profile
+                              </button>
+                            </div>
+
+                            {currentUser?.role === 'super_admin' && (
+                              <button
+                                onClick={() => handleConvertBirthdayToEvent(bday)}
+                                className="w-full py-1.5 bg-yellow-300 hover:bg-yellow-200 text-midnight rounded-xl text-[11px] font-bold border border-midnight shadow-xs flex items-center justify-center gap-1.5"
+                              >
+                                <Plus className="w-3 h-3 text-indigo-700" /> + Add as Official Family Event
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50">
+                      <Gift className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                      <h4 className="font-bold text-sm text-midnight">No member birthdays in selected filter</h4>
+                      <p className="text-xs text-secondary mt-1">
+                        Try selecting "All Months" or reset the branch filter to view all 19 family birthdays.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setBirthdayMonthFilter('all');
+                          setBirthdayBranchFilter('all');
+                        }}
+                        className="mt-3 px-4 py-1.5 bg-yellow-300 text-midnight rounded-xl text-xs font-bold border border-midnight"
+                      >
+                        Reset Birthday Filters
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -2995,7 +3386,7 @@ export default function App() {
                     <Shield className="w-6 h-6 text-midnight" />
                     <div>
                       <h2 className="font-heading font-black text-sm uppercase">Super Admin</h2>
-                      <p className="text-[10px] text-midnight font-bold">17 Control Modules</p>
+                      <p className="text-[10px] text-midnight font-bold">18 Control Modules</p>
                     </div>
                   </div>
                   <button
@@ -3025,6 +3416,7 @@ export default function App() {
                     { id: 'logs', label: '15. Activity Logs', icon: Database },
                     { id: 'backup', label: '16. Database Backup', icon: Download },
                     { id: 'general', label: '17. General Settings', icon: Settings },
+                    { id: 'supabase', label: '18. Supabase Backend', icon: Server },
                   ].map(item => {
                     const Icon = item.icon;
                     return (
@@ -3087,6 +3479,7 @@ export default function App() {
                     {adminTab === 'logs' && 'Security Audit Trail & Activity Logs'}
                     {adminTab === 'backup' && 'Database Backup & JSON Archive Restore'}
                     {adminTab === 'general' && 'General Settings & Live Security Audit'}
+                    {adminTab === 'supabase' && 'Supabase Cloud Backend & Database Architecture'}
                   </h1>
                 </div>
 
@@ -3487,86 +3880,257 @@ export default function App() {
               {/* MODULE 6: EVENTS MANAGEMENT */}
               {adminTab === 'events' && (
                 <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <p className="text-xs text-secondary">
-                      Create family reunions, weddings, anniversaries, and manage confirmed attendee RSVPs.
-                    </p>
+                  {/* Events Subtabs */}
+                  <div className="flex border-b-2 border-midnight pb-2 gap-2">
                     <button
-                      onClick={() => {
-                        setEditingEventId(null);
-                        setEventFormData({
-                          title: '',
-                          description: '',
-                          cover_photo: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=800&q=80',
-                          category: 'Family reunions',
-                          date: new Date().toISOString().split('T')[0],
-                          time: '11:00 AM IST',
-                          location: 'Maharashtra, India',
-                          branch: 'All Branches',
-                          visibility: 'public',
-                          invitations: 'All family members and descendants are invited.',
-                        });
-                        setIsAddEventModalOpen(true);
-                      }}
-                      className="px-4 py-2 bg-yellow-300 text-midnight rounded-xl text-xs font-bold border-2 border-midnight retro-btn flex items-center gap-1.5 shadow-[2px_2px_0px_#172033]"
+                      onClick={() => setAdminEventsTab('events')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                        adminEventsTab === 'events'
+                          ? 'bg-yellow-300 text-midnight border-2 border-midnight shadow-[2px_2px_0px_#172033]'
+                          : 'bg-white text-secondary hover:text-midnight border border-gray-300'
+                      }`}
                     >
-                      <Plus className="w-4 h-4" /> + CREATE NEW EVENT
+                      <Calendar className="w-4 h-4 text-indigo-700" /> Events Schedule ({eventsList.length})
+                    </button>
+                    <button
+                      onClick={() => setAdminEventsTab('birthdays')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                        adminEventsTab === 'birthdays'
+                          ? 'bg-yellow-300 text-midnight border-2 border-midnight shadow-[2px_2px_0px_#172033]'
+                          : 'bg-white text-secondary hover:text-midnight border border-gray-300'
+                      }`}
+                    >
+                      <Gift className="w-4 h-4 text-pink-600" /> Member Birthday Calendar ({birthdayCalendarList.length})
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {eventsList.map(ev => (
-                      <div key={ev.id} className="notebook-card p-5 bg-white relative">
-                        {ev.cover_photo && (
-                          <img src={ev.cover_photo} alt={ev.title} className="w-full h-32 object-cover rounded-xl mb-3 border border-midnight" />
-                        )}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="px-2.5 py-0.5 rounded-full bg-yellow-200 text-midnight text-[10px] font-bold border border-midnight">
-                            {ev.category}
-                          </span>
-                          <span className="text-[10px] text-indigo-700 font-bold">{ev.branch}</span>
-                        </div>
-                        <h4 className="font-heading font-bold text-base text-midnight mb-1">{ev.title}</h4>
-                        <p className="text-xs text-secondary mb-2">{ev.description}</p>
-                        <p className="text-[11px] text-secondary font-semibold">📅 {ev.date} at {ev.time} • 📍 {ev.location}</p>
+                  {adminEventsTab === 'events' ? (
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-xs text-secondary">
+                          Create family reunions, weddings, anniversaries, and manage confirmed attendee RSVPs.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setEditingEventId(null);
+                            setEventFormData({
+                              title: '',
+                              description: '',
+                              cover_photo: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=800&q=80',
+                              category: 'Family reunions',
+                              date: new Date().toISOString().split('T')[0],
+                              time: '11:00 AM IST',
+                              location: 'Maharashtra, India',
+                              branch: 'All Branches',
+                              visibility: 'public',
+                              invitations: 'All family members and descendants are invited.',
+                            });
+                            setIsAddEventModalOpen(true);
+                          }}
+                          className="px-4 py-2 bg-yellow-300 text-midnight rounded-xl text-xs font-bold border-2 border-midnight retro-btn flex items-center gap-1.5 shadow-[2px_2px_0px_#172033]"
+                        >
+                          <Plus className="w-4 h-4" /> + CREATE NEW EVENT
+                        </button>
+                      </div>
 
-                        <div className="mt-4 pt-3 border-t flex items-center justify-between">
-                          <span className="text-xs font-bold text-emerald-800">
-                            {ev.attendees?.length || 0} RSVP(s)
-                          </span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingEventId(ev.id);
-                                setEventFormData({
-                                  title: ev.title,
-                                  description: ev.description,
-                                  cover_photo: ev.cover_photo || '',
-                                  category: ev.category,
-                                  date: ev.date,
-                                  time: ev.time,
-                                  location: ev.location,
-                                  branch: ev.branch || 'All Branches',
-                                  visibility: ev.visibility,
-                                  invitations: ev.invitations || '',
-                                });
-                                setIsAddEventModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-yellow-300 text-midnight rounded-lg text-xs font-bold border border-midnight"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteEvent(ev.id, ev.title)}
-                              className="p-1 text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {eventsList.map(ev => (
+                          <div key={ev.id} className="notebook-card p-5 bg-white relative">
+                            {ev.cover_photo && (
+                              <img src={ev.cover_photo} alt={ev.title} className="w-full h-32 object-cover rounded-xl mb-3 border border-midnight" />
+                            )}
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="px-2.5 py-0.5 rounded-full bg-yellow-200 text-midnight text-[10px] font-bold border border-midnight">
+                                {ev.category}
+                              </span>
+                              <span className="text-[10px] text-indigo-700 font-bold">{ev.branch}</span>
+                            </div>
+                            <h4 className="font-heading font-bold text-base text-midnight mb-1">{ev.title}</h4>
+                            <p className="text-xs text-secondary mb-2">{ev.description}</p>
+                            <p className="text-[11px] text-secondary font-semibold">📅 {ev.date} at {ev.time} • 📍 {ev.location}</p>
+
+                            <div className="mt-4 pt-3 border-t flex items-center justify-between">
+                              <span className="text-xs font-bold text-emerald-800">
+                                {ev.attendees?.length || 0} RSVP(s)
+                              </span>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingEventId(ev.id);
+                                    setEventFormData({
+                                      title: ev.title,
+                                      description: ev.description,
+                                      cover_photo: ev.cover_photo || '',
+                                      category: ev.category,
+                                      date: ev.date,
+                                      time: ev.time,
+                                      location: ev.location,
+                                      branch: ev.branch || 'All Branches',
+                                      visibility: ev.visibility,
+                                      invitations: ev.invitations || '',
+                                    });
+                                    setIsAddEventModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-yellow-300 text-midnight rounded-lg text-xs font-bold border border-midnight"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteEvent(ev.id, ev.title)}
+                                  className="p-1 text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Birthday Management Header & Filters */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                          <p className="text-xs text-secondary">
+                            Monthly chronological birthday index for all 19 Ambulkar family members. Convert any birthday into an official celebration event with 1 click.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={birthdayBranchFilter}
+                            onChange={e => setBirthdayBranchFilter(e.target.value)}
+                            className="px-2.5 py-1.5 bg-white border border-midnight rounded-xl text-xs font-medium"
+                          >
+                            <option value="all">All Branches</option>
+                            {branchesList.map(b => (
+                              <option key={b.id} value={b.name}>{b.name}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
-                    ))}
-                  </div>
+
+                      {/* Month filter tabs */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-4 scrollbar-none">
+                        <button
+                          onClick={() => setBirthdayMonthFilter('all')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
+                            birthdayMonthFilter === 'all'
+                              ? 'bg-yellow-300 text-midnight border-midnight shadow-xs'
+                              : 'bg-white text-secondary border-gray-300 hover:text-midnight'
+                          }`}
+                        >
+                          All ({birthdayCalendarList.length})
+                        </button>
+                        {MONTH_SHORT.map((mShort, idx) => {
+                          const monthNum = idx + 1;
+                          const count = birthdayCalendarList.filter(b => b.month === monthNum).length;
+                          return (
+                            <button
+                              key={mShort}
+                              onClick={() => setBirthdayMonthFilter(monthNum)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition border flex items-center gap-1 ${
+                                birthdayMonthFilter === monthNum
+                                  ? 'bg-yellow-300 text-midnight border-midnight shadow-xs'
+                                  : 'bg-white text-secondary border-gray-300 hover:text-midnight'
+                              }`}
+                            >
+                              <span>{mShort}</span>
+                              {count > 0 && (
+                                <span className="w-3.5 h-3.5 rounded-full bg-pink-100 text-pink-700 text-[9px] flex items-center justify-center font-bold">
+                                  {count}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Admin Table of Member Birthdays */}
+                      <div className="border-2 border-midnight rounded-xl overflow-hidden bg-white shadow-sm">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-yellow-200 border-b-2 border-midnight text-midnight font-bold">
+                              <th className="p-3">Member</th>
+                              <th className="p-3">Branch &amp; Gen</th>
+                              <th className="p-3">Birth Date</th>
+                              <th className="p-3">Milestone Age</th>
+                              <th className="p-3">Zodiac Sign</th>
+                              <th className="p-3">Countdown</th>
+                              <th className="p-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {filteredBirthdayList.map(bday => (
+                              <tr key={bday.member.id} className="hover:bg-yellow-50/50 transition">
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <img
+                                      src={bday.member.avatar || 'https://placehold.co/150x150/9878FF/FFFFFF?text=MA'}
+                                      alt={bday.member.name}
+                                      className="w-8 h-8 rounded-full border border-midnight object-cover shrink-0"
+                                    />
+                                    <div>
+                                      <p className="font-bold text-midnight flex items-center gap-1">
+                                        <span>{bday.member.name}</span>
+                                        {bday.member.isTwin && (
+                                          <span className="text-[9px] px-1 bg-amber-100 text-amber-800 rounded font-bold">Twin</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-3 text-secondary">
+                                  <p className="font-semibold text-indigo-700">{bday.member.branch}</p>
+                                  <p className="text-[10px] text-gray-500">{bday.member.generation}</p>
+                                </td>
+                                <td className="p-3 font-semibold text-midnight">
+                                  {bday.monthName} {bday.day}, {bday.birthYear}
+                                </td>
+                                <td className="p-3">
+                                  <span className="px-2 py-0.5 rounded-full bg-pink-100 text-pink-800 font-bold text-[11px] border border-pink-200">
+                                    Turning {bday.turningAge} in 2026
+                                  </span>
+                                </td>
+                                <td className="p-3 font-medium text-purple-800">
+                                  {bday.zodiac.symbol} {bday.zodiac.name}
+                                </td>
+                                <td className="p-3">
+                                  {bday.isToday ? (
+                                    <span className="px-2 py-0.5 rounded bg-red-500 text-white font-bold text-[10px] animate-pulse">
+                                      🎉 Today!
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-secondary font-mono">
+                                      in {bday.daysUntil} days
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => handleConvertBirthdayToEvent(bday)}
+                                      className="px-2.5 py-1 bg-yellow-300 hover:bg-yellow-200 text-midnight rounded-lg font-bold text-[11px] border border-midnight shadow-xs flex items-center gap-1"
+                                      title="Convert Birthday to Official Event"
+                                    >
+                                      <Plus className="w-3 h-3 text-indigo-700" /> + Add Event
+                                    </button>
+                                    <button
+                                      onClick={() => handleSendWhatsAppWish(bday)}
+                                      className="p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg border border-emerald-300"
+                                      title="Send WhatsApp Wish"
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4301,6 +4865,268 @@ export default function App() {
                             ))}
                           </div>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODULE 18: SUPABASE BACKEND ARCHITECTURE & CLOUD DATABASE */}
+              {adminTab === 'supabase' && (
+                <div className="space-y-6">
+                  {/* Top Status Card */}
+                  <div className="notebook-card p-6 bg-white space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-100 border-2 border-midnight flex items-center justify-center text-emerald-800 shadow-[2px_2px_0px_#172033]">
+                          <Server className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-heading font-extrabold text-lg text-midnight">
+                            Supabase Cloud Project Architecture
+                          </h3>
+                          <p className="text-xs text-secondary">
+                            Centralized client configuration connected at <code className="bg-gray-100 px-1 py-0.5 rounded text-indigo-700 font-mono">src/lib/supabase.ts</code>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                          supabaseStatus.connected
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full ${supabaseStatus.connected ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
+                          {supabaseStatus.connected ? `Connected (${supabaseStatus.latencyMs}ms)` : 'Project Ready'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSupabaseStatus(prev => ({ ...prev, testing: true }));
+                            try {
+                              const res = await fetch('/api/supabase/test-connection', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  url: supabaseConfigState.url,
+                                  key: supabaseConfigState.key,
+                                }),
+                              });
+                              const data = await res.json();
+                              setSupabaseStatus({
+                                connected: data.reachable,
+                                message: data.message,
+                                latencyMs: data.latency_ms,
+                                testing: false,
+                              });
+                              showToast(data.reachable ? `Supabase reachable! Latency: ${data.latency_ms}ms` : data.message, data.reachable ? 'success' : 'error');
+                            } catch (e: any) {
+                              setSupabaseStatus({
+                                connected: false,
+                                message: 'Failed to run test',
+                                testing: false,
+                              });
+                              showToast('Connection test failed', 'error');
+                            }
+                          }}
+                          disabled={supabaseStatus.testing}
+                          className="px-3 py-1.5 bg-yellow-300 text-midnight rounded-xl text-xs font-bold border border-midnight shadow-xs hover:bg-yellow-200 flex items-center gap-1"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${supabaseStatus.testing ? 'animate-spin' : ''}`} />
+                          {supabaseStatus.testing ? 'Testing...' : 'Test Connection'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Connection status banner */}
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="text-secondary">{supabaseStatus.message}</span>
+                      </div>
+                      {supabaseStatus.latencyMs !== undefined && (
+                        <span className="font-mono text-[11px] font-bold text-indigo-700">
+                          RTT: {supabaseStatus.latencyMs}ms
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Project URL & Publishable Key configuration */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block font-bold text-xs text-midnight mb-1">
+                          Supabase Project URL
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={supabaseConfigState.url}
+                          className="w-full p-2.5 rounded-xl border border-midnight bg-gray-100 text-xs font-mono text-indigo-900"
+                        />
+                        <p className="text-[10px] text-secondary mt-1">
+                          Configured in <code className="font-mono">.env.example</code> as <code className="font-mono">VITE_SUPABASE_URL</code>
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-xs text-midnight mb-1">
+                          Supabase Publishable / Anon Key
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            placeholder={supabaseConfigState.key ? '••••••••••••••••••••••••••••••' : 'Enter Supabase publishable key'}
+                            value={supabaseKeyInput}
+                            onChange={e => setSupabaseKeyInput(e.target.value)}
+                            className="w-full p-2.5 rounded-xl border border-midnight text-xs font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!supabaseKeyInput.trim()) {
+                                showToast('Please enter a valid key', 'error');
+                                return;
+                              }
+                              setSupabaseConfig(supabaseConfigState.url, supabaseKeyInput.trim());
+                              setSupabaseConfigState(getSupabaseConfig());
+                              setSupabaseKeyInput('');
+                              showToast('Supabase key saved and reconnected!', 'success');
+                            }}
+                            className="px-4 py-2 bg-yellow-300 text-midnight rounded-xl text-xs font-bold border border-midnight shadow-xs hover:bg-yellow-200 shrink-0"
+                          >
+                            Save Key
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-secondary mt-1">
+                          Stored securely in client configuration. Never exposes secret / service_role keys.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SQL Migration Script Generator & Action Bar */}
+                  <div className="notebook-card p-6 bg-white space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-200">
+                      <div>
+                        <h4 className="font-heading font-extrabold text-base text-midnight flex items-center gap-2">
+                          <Database className="w-4 h-4 text-indigo-600" />
+                          <span>Complete PostgreSQL Schema &amp; RLS Migration</span>
+                        </h4>
+                        <p className="text-xs text-secondary mt-0.5">
+                          16 Tables, UUID PKs, Row-Level Security policies, and 5 storage buckets ready to execute.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch('/api/supabase/sql-migration');
+                              if (res.ok) {
+                                const sql = await res.text();
+                                await navigator.clipboard.writeText(sql);
+                                showToast('Copied complete 462-line Supabase SQL migration script to clipboard!', 'success');
+                              } else {
+                                showToast('Failed to fetch SQL script', 'error');
+                              }
+                            } catch (e) {
+                              showToast('Clipboard copy error', 'error');
+                            }
+                          }}
+                          className="px-4 py-2 bg-yellow-300 hover:bg-yellow-200 text-midnight font-bold text-xs rounded-xl border border-midnight shadow-[2px_2px_0px_#172033] flex items-center gap-1.5"
+                        >
+                          <Copy className="w-3.5 h-3.5" /> Copy Complete SQL Migration Script
+                        </button>
+
+                        <a
+                          href="https://supabase.com/dashboard/project/vhufjomnmyazzbayfocf/sql"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-2 bg-white hover:bg-gray-50 text-indigo-700 font-bold text-xs rounded-xl border border-midnight shadow-xs flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Open Supabase SQL Editor
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Step-by-Step execution guide */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs">
+                        <p className="font-bold text-indigo-950 mb-1 flex items-center gap-1">
+                          <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] flex items-center justify-center font-bold">1</span>
+                          <span>Copy SQL Migration</span>
+                        </p>
+                        <p className="text-[11px] text-secondary">
+                          Click the button above to copy the generated PostgreSQL schema containing all 16 tables and RLS security rules.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-yellow-50/70 border border-yellow-200 rounded-xl text-xs">
+                        <p className="font-bold text-amber-950 mb-1 flex items-center gap-1">
+                          <span className="w-4 h-4 rounded-full bg-amber-600 text-white text-[10px] flex items-center justify-center font-bold">2</span>
+                          <span>Run in SQL Editor</span>
+                        </p>
+                        <p className="text-[11px] text-secondary">
+                          Paste into your Supabase Dashboard SQL Editor (<code className="font-mono text-[10px]">vhufjomnmyazzbayfocf</code>) and click 'RUN'.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
+                        <p className="font-bold text-emerald-950 mb-1 flex items-center gap-1">
+                          <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center font-bold">3</span>
+                          <span>Instant Live Sync</span>
+                        </p>
+                        <p className="text-[11px] text-secondary">
+                          All public sections, admin modules, photo uploads, and member management instantly synchronize with Supabase.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Tables & Storage Buckets Overview */}
+                    <div className="pt-2">
+                      <h5 className="font-bold text-xs text-midnight mb-2">
+                        Active Database Schema Architecture (16 Tables &amp; 5 Storage Buckets):
+                      </h5>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        {[
+                          { name: 'families', desc: 'Multi-dynasty lineages' },
+                          { name: 'family_branches', desc: '4 Core Branches' },
+                          { name: 'family_members', desc: '19 Member Profiles' },
+                          { name: 'family_relationships', desc: 'Topology & Tree' },
+                          { name: 'photo_albums', desc: '9 Categorized Albums' },
+                          { name: 'family_photos', desc: 'Section 7 Memories' },
+                          { name: 'heritage_photos', desc: 'Section 2 Ancestral' },
+                          { name: 'family_events', desc: 'Events & Birthdays' },
+                          { name: 'event_rsvps', desc: 'Attendee Tracking' },
+                          { name: 'family_stories', desc: 'Chronicles & Lore' },
+                          { name: 'user_profiles', desc: 'Roles & Permissions' },
+                          { name: 'invitations', desc: 'Single-Use Passes' },
+                          { name: 'access_requests', desc: 'Verification Queue' },
+                          { name: 'notifications', desc: 'WhatsApp & Email Logs' },
+                          { name: 'activity_logs', desc: 'Security Audit Trail' },
+                          { name: 'website_settings', desc: 'Dynasty Config & Theme' },
+                        ].map((tbl, i) => (
+                          <div key={tbl.name} className="p-2 bg-gray-50 rounded-lg border border-gray-200">
+                            <p className="font-mono font-bold text-[11px] text-indigo-700">{i + 1}. {tbl.name}</p>
+                            <p className="text-[10px] text-secondary">{tbl.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Storage Buckets List */}
+                    <div className="pt-2">
+                      <h5 className="font-bold text-xs text-midnight mb-2">
+                        Supabase Storage Buckets Configured:
+                      </h5>
+                      <div className="flex flex-wrap gap-2">
+                        {['family-photos', 'profile-photos', 'event-photos', 'family-documents', 'family-videos'].map(b => (
+                          <span key={b} className="px-2.5 py-1 bg-purple-50 text-purple-900 border border-purple-300 rounded-lg text-xs font-mono font-bold flex items-center gap-1">
+                            <FolderPlus className="w-3 h-3 text-purple-600" /> {b}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </div>

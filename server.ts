@@ -6,6 +6,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2218,6 +2219,67 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       tests: testResults,
     });
+  });
+
+  // 18. Supabase SQL Migration Script Endpoint
+  app.get('/api/supabase/sql-migration', (req, res) => {
+    try {
+      const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261104000000_init_familysphere_schema.sql');
+      if (fs.existsSync(migrationPath)) {
+        const sqlContent = fs.readFileSync(migrationPath, 'utf8');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.send(sqlContent);
+      }
+      res.status(404).send('-- Migration file not found on disk');
+    } catch (e: any) {
+      res.status(500).send('-- Error loading migration: ' + e?.message);
+    }
+  });
+
+  // 19. Supabase Connection Verification Proxy
+  app.post('/api/supabase/test-connection', async (req, res) => {
+    const { url, key } = req.body;
+    const targetUrl = url || process.env.VITE_SUPABASE_URL || 'https://vhufjomnmyazzbayfocf.supabase.co';
+    const targetKey = key || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+    
+    const startTime = Date.now();
+    try {
+      // Ping the Supabase health or rest API endpoint
+      const pingUrl = `${targetUrl.replace(/\/$/, '')}/rest/v1/`;
+      const headers: Record<string, string> = {
+        'apikey': targetKey || 'anon',
+      };
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      
+      const response = await fetch(pingUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      
+      const latencyMs = Date.now() - startTime;
+      return res.json({
+        success: true,
+        project_url: targetUrl,
+        status: response.status,
+        status_text: response.statusText,
+        latency_ms: latencyMs,
+        reachable: true,
+        message: `Supabase instance at ${new URL(targetUrl).hostname} responded with status ${response.status} in ${latencyMs}ms.`,
+      });
+    } catch (e: any) {
+      const latencyMs = Date.now() - startTime;
+      return res.json({
+        success: false,
+        project_url: targetUrl,
+        latency_ms: latencyMs,
+        reachable: false,
+        message: e?.name === 'AbortError' ? 'Connection timed out after 6000ms' : (e?.message || 'Failed to reach Supabase project'),
+      });
+    }
   });
 
   // Global API Error Handler
