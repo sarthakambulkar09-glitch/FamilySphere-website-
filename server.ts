@@ -146,11 +146,33 @@ interface AccountRecord {
   member_id: string;
   email: string;
   password_hash: string;
-  role: 'super_admin' | 'member';
+  role: 'super_admin' | 'family_admin' | 'member';
   status: 'active' | 'suspended' | 'pending';
   name: string;
+  mobile?: string;
+  email_verified: boolean;
+  branch?: string;
+  reset_code?: string | null;
+  reset_code_expiry?: number | null;
   created_at: string;
   last_login: string | null;
+}
+
+interface ProfileUpdateRequest {
+  id: string;
+  member_id: string;
+  member_name: string;
+  branch: string;
+  requested_by_user_id: string;
+  requested_by_name: string;
+  requested_by_email: string;
+  changes: Record<string, { old_value: any; proposed_value: any; label?: string }>;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  admin_notes?: string;
+  reviewed_by_name?: string;
+  created_at: string;
+  reviewed_at?: string;
 }
 
 interface ActivityLog {
@@ -216,31 +238,68 @@ let members: MemberRecord[] = [
   { id: 'amb_19', owner_user_id: 'usr_amb_19', name: 'Dr. Swapnil Ambulkar', branch: 'Sudhakar Ambulkar Family', generation: 'Gen 3 (Grandchildren)', birth: '2002', death: null, birthplace: 'Maharashtra, India', hometown: 'Maharashtra, India', bio: 'Son of Sudhakar and Madhuri Ambulkar. Twin brother of Sagar Ambulkar. Medical professional.', education: 'MBBS, Medical Science', occupation: 'Medical Doctor', achievements: ['Completed Medical Doctorate / MBBS'], parents: ['amb_9', 'amb_10'], siblings: ['amb_18'], spouse: null, children: [], isTwin: true, twinWith: 'amb_18', avatar: 'https://placehold.co/150x150/78BFFF/FFFFFF?text=DrSA', privacy: 'public', personal_photos: [] }
 ];
 
-// Accounts Table: Every member has an account
+// Accounts Table: Every member has an account with 3-tier access levels
 let accounts: AccountRecord[] = [
-  // Super Admin
-  { user_id: 'usr_amb_17', member_id: 'amb_17', email: 'sarthakambulkar09@gmail.com', password_hash: 'password123', role: 'super_admin', status: 'active', name: 'Sarthak Ambulkar', created_at: '2026-01-01', last_login: '2026-11-02' },
-  // Grandparents
-  { user_id: 'usr_amb_1', member_id: 'amb_1', email: 'maratherao@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Maratherao Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_2', member_id: 'amb_2', email: 'prabhavathi@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Prabhavathi Ambulkar', created_at: '2026-01-01', last_login: null },
-  // Children & Spouses
-  { user_id: 'usr_amb_3', member_id: 'amb_3', email: 'prakash@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Prakash Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_4', member_id: 'amb_4', email: 'jyoti@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Jyoti Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_5', member_id: 'amb_5', email: 'krushana@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Krushana Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_6', member_id: 'amb_6', email: 'bhavana@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Bhavana Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_7', member_id: 'amb_7', email: 'eknath@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Eknath Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_8', member_id: 'amb_8', email: 'savita@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Savita Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_9', member_id: 'amb_9', email: 'sudhakar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sudhakar Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_10', member_id: 'amb_10', email: 'madhuri@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Madhuri Ambulkar', created_at: '2026-01-01', last_login: null },
-  // Grandchildren
-  { user_id: 'usr_amb_11', member_id: 'amb_11', email: 'dhaneshwari@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Dhaneshwari Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_12', member_id: 'amb_12', email: 'sunil@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sunil Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_13', member_id: 'amb_13', email: 'mayuri@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Mayuri Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_14', member_id: 'amb_14', email: 'tushar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Tushar Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_15', member_id: 'amb_15', email: 'pranali@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Pranali Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_16', member_id: 'amb_16', email: 'komal@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Komal Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_18', member_id: 'amb_18', email: 'sagar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sagar Ambulkar', created_at: '2026-01-01', last_login: null },
-  { user_id: 'usr_amb_19', member_id: 'amb_19', email: 'swapnil@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Dr. Swapnil Ambulkar', created_at: '2026-01-01', last_login: null },
+  // Level 3 – Super Admin
+  { user_id: 'usr_amb_17', member_id: 'amb_17', email: 'sarthakambulkar09@gmail.com', password_hash: 'password123', role: 'super_admin', status: 'active', name: 'Sarthak Ambulkar', mobile: '+91 98230 11009', email_verified: true, branch: 'Eknath Ambulkar Family', created_at: '2026-01-01', last_login: '2026-11-06' },
+  // Level 2 – Family Admin (Dr. Swapnil Ambulkar, Medical Doctor)
+  { user_id: 'usr_amb_19', member_id: 'amb_19', email: 'swapnil@ambulkar.family', password_hash: 'password123', role: 'family_admin', status: 'active', name: 'Dr. Swapnil Ambulkar', mobile: '+91 98230 44019', email_verified: true, branch: 'Sudhakar Ambulkar Family', created_at: '2026-01-01', last_login: '2026-11-05' },
+  // Level 1 – Family Members
+  { user_id: 'usr_amb_1', member_id: 'amb_1', email: 'maratherao@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Maratherao Ambulkar', mobile: '+91 98230 10001', email_verified: true, branch: 'Grandparents Root', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_2', member_id: 'amb_2', email: 'prabhavathi@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Prabhavathi Ambulkar', mobile: '+91 98230 10002', email_verified: true, branch: 'Grandparents Root', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_3', member_id: 'amb_3', email: 'prakash@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Prakash Ambulkar', mobile: '+91 98230 20003', email_verified: true, branch: 'Prakash Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_4', member_id: 'amb_4', email: 'jyoti@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Jyoti Ambulkar', mobile: '+91 98230 20004', email_verified: true, branch: 'Prakash Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_5', member_id: 'amb_5', email: 'krushana@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Krushana Ambulkar', mobile: '+91 98230 30005', email_verified: true, branch: 'Krushana Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_6', member_id: 'amb_6', email: 'bhavana@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Bhavana Ambulkar', mobile: '+91 98230 30006', email_verified: true, branch: 'Krushana Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_7', member_id: 'amb_7', email: 'eknath@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Eknath Ambulkar', mobile: '+91 98230 40007', email_verified: true, branch: 'Eknath Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_8', member_id: 'amb_8', email: 'savita@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Savita Ambulkar', mobile: '+91 98230 40008', email_verified: true, branch: 'Eknath Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_9', member_id: 'amb_9', email: 'sudhakar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sudhakar Ambulkar', mobile: '+91 98230 50009', email_verified: true, branch: 'Sudhakar Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_10', member_id: 'amb_10', email: 'madhuri@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Madhuri Ambulkar', mobile: '+91 98230 50010', email_verified: true, branch: 'Sudhakar Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_11', member_id: 'amb_11', email: 'dhaneshwari@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Dhaneshwari Ambulkar', mobile: '+91 98230 60011', email_verified: true, branch: 'Prakash Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_12', member_id: 'amb_12', email: 'sunil@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sunil Ambulkar', mobile: '+91 98230 60012', email_verified: true, branch: 'Prakash Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_13', member_id: 'amb_13', email: 'mayuri@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Mayuri Ambulkar', mobile: '+91 98230 60013', email_verified: true, branch: 'Prakash Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_14', member_id: 'amb_14', email: 'tushar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Tushar Ambulkar', mobile: '+91 98230 70014', email_verified: true, branch: 'Krushana Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_15', member_id: 'amb_15', email: 'pranali@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Pranali Ambulkar', mobile: '+91 98230 70015', email_verified: true, branch: 'Krushana Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_16', member_id: 'amb_16', email: 'komal@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Komal Ambulkar', mobile: '+91 98230 80016', email_verified: true, branch: 'Eknath Ambulkar Family', created_at: '2026-01-01', last_login: null },
+  { user_id: 'usr_amb_18', member_id: 'amb_18', email: 'sagar@ambulkar.family', password_hash: 'password123', role: 'member', status: 'active', name: 'Sagar Ambulkar', mobile: '+91 98230 90018', email_verified: true, branch: 'Sudhakar Ambulkar Family', created_at: '2026-01-01', last_login: null },
+];
+
+// Profile Update Approval Requests Store
+let profileUpdateRequests: ProfileUpdateRequest[] = [
+  {
+    id: 'req_1',
+    member_id: 'amb_12',
+    member_name: 'Sunil Ambulkar',
+    branch: 'Prakash Ambulkar Family',
+    requested_by_user_id: 'usr_amb_12',
+    requested_by_name: 'Sunil Ambulkar',
+    requested_by_email: 'sunil@ambulkar.family',
+    changes: {
+      birth: { old_value: '1998', proposed_value: '1998-04-05', label: 'Date of Birth' },
+      education: { old_value: 'Graduate', proposed_value: 'B.Tech Mechanical Engineering, Pune University', label: 'Education Degree' },
+    },
+    reason: 'Updated full birth date with day & month and added degree specialization',
+    status: 'pending',
+    created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+  },
+  {
+    id: 'req_2',
+    member_id: 'amb_16',
+    member_name: 'Komal Ambulkar',
+    branch: 'Eknath Ambulkar Family',
+    requested_by_user_id: 'usr_amb_16',
+    requested_by_name: 'Komal Ambulkar',
+    requested_by_email: 'komal@ambulkar.family',
+    changes: {
+      occupation: { old_value: 'Professional', proposed_value: 'Senior Data Analyst & Tech Consultant', label: 'Occupation' },
+    },
+    reason: 'Promoted to Senior Data Analyst role',
+    status: 'approved',
+    admin_notes: 'Verified and approved with congratulations!',
+    reviewed_by_name: 'Sarthak Ambulkar (Super Admin)',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    reviewed_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  }
 ];
 
 let activityLogs: ActivityLog[] = [
@@ -684,7 +743,7 @@ function authenticateToken(req: Request, res: Response, next: NextFunction) {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.NODE_ENV === 'production' ? (Number(process.env.PORT) || 8080) : 3000;
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -694,35 +753,246 @@ async function startServer() {
 
   // 1. Auth: Standard Login
   app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, remember_me } = req.body;
     const account = accounts.find(a => a.email.toLowerCase() === (email || '').toLowerCase().trim());
 
     if (!account || account.password_hash !== password) {
       logAction({ name: email || 'Anonymous', email: email || 'Unknown', role: 'guest' }, 'LOGIN_FAILED', 'Account Auth', 'Invalid credentials provided', false);
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email address or password' });
     }
 
     if (account.status === 'suspended') {
       logAction({ name: account.name, email: account.email, role: account.role }, 'LOGIN_BLOCKED', 'Account Auth', 'Suspended account attempted login', false);
-      return res.status(403).json({ error: 'Account is suspended. Please contact Super Admin.' });
+      return res.status(403).json({ error: 'Your account is suspended. Please contact the Super Admin.' });
     }
 
     account.last_login = new Date().toISOString().split('T')[0];
     const token = `token_${account.user_id}`;
     const member = members.find(m => m.id === account.member_id);
 
-    logAction({ name: account.name, email: account.email, role: account.role }, 'LOGIN_SUCCESS', 'Session', `User authenticated as ${account.role}`);
+    logAction({ name: account.name, email: account.email, role: account.role }, 'LOGIN_SUCCESS', 'Session', `User authenticated as ${account.role}${remember_me ? ' (Remember Me enabled)' : ''}`);
 
     res.json({
+      success: true,
       token,
       user: {
         user_id: account.user_id,
         member_id: account.member_id,
         name: account.name,
         email: account.email,
+        mobile: account.mobile || '',
+        email_verified: account.email_verified,
+        branch: account.branch || (member ? member.branch : 'All Branches'),
         role: account.role,
         avatar: member ? member.avatar : '',
       }
+    });
+  });
+
+  // 1b. Auth: Family Member Registration (Level 1 Member by Default)
+  app.post('/api/auth/register', (req, res) => {
+    const { name, email, mobile, password, confirm_password, branch, avatar } = req.body;
+
+    // Field Validations
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Full Name is required.' });
+    }
+    if (!email || !email.trim() || !email.includes('@')) {
+      return res.status(400).json({ error: 'A valid email address is required.' });
+    }
+    if (!branch || !branch.trim()) {
+      return res.status(400).json({ error: 'Please select a Family Branch.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+    if (password !== confirm_password) {
+      return res.status(400).json({ error: 'Passwords do not match.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Prevent duplicate accounts
+    if (accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
+      logAction({ name: name.trim(), email: cleanEmail, role: 'guest' }, 'REGISTER_DUPLICATE_ATTEMPT', 'Registration', 'Registration attempt with existing email', false);
+      return res.status(400).json({ error: 'An account with this email address already exists. Please log in or use Forgot Password.' });
+    }
+
+    // Check if an existing family member record matches by name, or create a new profile
+    let member = members.find(m => m.name.toLowerCase() === name.trim().toLowerCase());
+    const newUserId = `usr_${Date.now()}`;
+
+    if (!member) {
+      const newMemberId = `amb_${Date.now()}`;
+      member = {
+        id: newMemberId,
+        owner_user_id: newUserId,
+        name: name.trim(),
+        branch: branch.trim(),
+        generation: 'Gen 3 (Grandchildren)',
+        birth: '2000',
+        death: null,
+        birthplace: 'Maharashtra, India',
+        hometown: 'Maharashtra, India',
+        bio: `Registered family member of the ${branch.trim()} lineage.`,
+        education: 'Graduate',
+        occupation: 'Professional',
+        achievements: [],
+        parents: [],
+        siblings: [],
+        spouse: null,
+        children: [],
+        avatar: avatar || 'https://placehold.co/150x150/9878FF/FFFFFF?text=' + encodeURIComponent(name.trim().substring(0, 2).toUpperCase()),
+        privacy: 'public',
+        personal_photos: [],
+      };
+      members.push(member);
+    } else {
+      // Link owner_user_id
+      member.owner_user_id = newUserId;
+      if (avatar) member.avatar = avatar;
+    }
+
+    // STRICT: Public registration ALWAYS receives 'member' role (Level 1)
+    const newAccount: AccountRecord = {
+      user_id: newUserId,
+      member_id: member.id,
+      email: cleanEmail,
+      password_hash: password,
+      role: 'member', // Strictly Level 1
+      status: 'active',
+      name: name.trim(),
+      mobile: mobile ? mobile.trim() : '+91 98000 00000',
+      email_verified: true, // Verified upon complete registration
+      branch: branch.trim(),
+      created_at: new Date().toISOString().split('T')[0],
+      last_login: new Date().toISOString().split('T')[0],
+    };
+
+    accounts.push(newAccount);
+    const token = `token_${newUserId}`;
+
+    logAction(
+      { name: newAccount.name, email: newAccount.email, role: 'member' },
+      'REGISTER_SUCCESS',
+      'Account Management',
+      `Registered new family member account linked to profile ${member.name} (${branch})`
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Account registered successfully! Welcome to FamilySphere.',
+      token,
+      user: {
+        user_id: newAccount.user_id,
+        member_id: member.id,
+        name: newAccount.name,
+        email: newAccount.email,
+        mobile: newAccount.mobile,
+        email_verified: newAccount.email_verified,
+        branch: newAccount.branch,
+        role: newAccount.role,
+        avatar: member.avatar,
+      }
+    });
+  });
+
+  // 1c. Auth: Forgot Password Request (Generates OTP reset code)
+  app.post('/api/auth/forgot-password', (req, res) => {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Please enter your registered email address.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const account = accounts.find(a => a.email.toLowerCase() === cleanEmail);
+
+    if (!account) {
+      // Do not disclose whether email exists for security, or provide helpful dev message
+      return res.status(404).json({ error: 'No registered family member account found with this email address.' });
+    }
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    account.reset_code = resetCode;
+    account.reset_code_expiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    logAction(
+      { name: account.name, email: account.email, role: account.role },
+      'PASSWORD_RESET_REQUESTED',
+      'Auth Security',
+      `Generated 6-digit password reset code for ${account.email}`
+    );
+
+    res.json({
+      success: true,
+      message: `Password reset verification code has been dispatched to ${cleanEmail}. (Security code: ${resetCode})`,
+      reset_code: resetCode, // Returned for simulated verification UI
+      email: cleanEmail,
+    });
+  });
+
+  // 1d. Auth: Reset Password with OTP Code
+  app.post('/api/auth/reset-password', (req, res) => {
+    const { email, reset_code, new_password, confirm_password } = req.body;
+
+    if (!email || !reset_code || !new_password) {
+      return res.status(400).json({ error: 'Email, verification code, and new password are required.' });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+    if (confirm_password && new_password !== confirm_password) {
+      return res.status(400).json({ error: 'New passwords do not match.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const account = accounts.find(a => a.email.toLowerCase() === cleanEmail);
+
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    if (!account.reset_code || account.reset_code !== reset_code.trim()) {
+      return res.status(400).json({ error: 'Invalid or expired password reset verification code.' });
+    }
+
+    if (account.reset_code_expiry && Date.now() > account.reset_code_expiry) {
+      return res.status(400).json({ error: 'Password reset code has expired. Please request a new code.' });
+    }
+
+    account.password_hash = new_password;
+    account.reset_code = null;
+    account.reset_code_expiry = null;
+
+    logAction(
+      { name: account.name, email: account.email, role: account.role },
+      'PASSWORD_RESET_COMPLETED',
+      'Auth Security',
+      `Password successfully reset for account ${account.email}`
+    );
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully! You can now sign in with your new password.',
+    });
+  });
+
+  // 1e. Auth: Email Verification Trigger
+  app.post('/api/auth/verify-email', (req, res) => {
+    const { email } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const account = accounts.find(a => a.email.toLowerCase() === cleanEmail);
+
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    account.email_verified = true;
+    logAction({ name: account.name, email: account.email, role: account.role }, 'EMAIL_VERIFIED', 'Account Security', 'Email address confirmed');
+
+    res.json({
+      success: true,
+      message: 'Email address verified successfully!',
     });
   });
 
@@ -771,19 +1041,25 @@ async function startServer() {
         member_id: account.member_id,
         name: account.name,
         email: account.email,
+        mobile: account.mobile || '',
+        email_verified: account.email_verified,
+        branch: account.branch || (member ? member.branch : 'All Branches'),
         role: 'super_admin',
         avatar: member ? member.avatar : '',
       }
     });
   });
 
-  // 3. Get Current User / Verify Session
+  // 3. Get Current User / Verify Session & Profile Requests
   app.get('/api/auth/me', (req, res) => {
     const user = (req as any).user;
     if (!user) {
       return res.status(401).json({ authenticated: false });
     }
     const member = members.find(m => m.id === user.member_id);
+    const myPendingRequestsCount = profileUpdateRequests.filter(r => r.requested_by_user_id === user.user_id && r.status === 'pending').length;
+    const allPendingRequestsCount = profileUpdateRequests.filter(r => r.status === 'pending').length;
+
     res.json({
       authenticated: true,
       user: {
@@ -791,9 +1067,185 @@ async function startServer() {
         member_id: user.member_id,
         name: user.name,
         email: user.email,
+        mobile: user.mobile || '',
+        email_verified: user.email_verified,
+        branch: user.branch || (member ? member.branch : 'All Branches'),
         role: user.role,
         avatar: member ? member.avatar : '',
+        my_pending_requests: myPendingRequestsCount,
+        all_pending_requests: allPendingRequestsCount,
       }
+    });
+  });
+
+  // 3b. Profile Update Requests: GET List (Enforces Role-Based Access)
+  app.get('/api/profile-requests', (req, res) => {
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (user.role === 'super_admin') {
+      return res.json(profileUpdateRequests);
+    }
+
+    if (user.role === 'family_admin') {
+      // Family Admin sees requests for their family branch or all assigned requests
+      const branchRequests = profileUpdateRequests.filter(r => r.branch === user.branch || !user.branch);
+      return res.json(branchRequests);
+    }
+
+    // Normal family member: can view only their own submitted requests
+    const myRequests = profileUpdateRequests.filter(r => r.requested_by_user_id === user.user_id || r.member_id === user.member_id);
+    res.json(myRequests);
+  });
+
+  // 3c. Profile Update Requests: POST Submit New Change Request
+  app.post('/api/profile-requests', (req, res) => {
+    const user = (req as any).user;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { member_id, changes, reason } = req.body;
+    const targetMember = members.find(m => m.id === member_id);
+
+    if (!targetMember) {
+      return res.status(404).json({ error: 'Target member profile not found.' });
+    }
+
+    // RLS: Member can only submit requests for their own profile
+    if (user.role === 'member' && user.member_id !== member_id && user.user_id !== targetMember.owner_user_id) {
+      logAction(
+        { name: user.name, email: user.email, role: user.role },
+        'UNAUTHORIZED_REQUEST_SUBMISSION',
+        `Profile: ${targetMember.name}`,
+        'Attempted to submit profile changes for another member',
+        false
+      );
+      return res.status(403).json({ error: 'Permission Denied: You can only submit profile change requests for your own profile.' });
+    }
+
+    const newRequest: ProfileUpdateRequest = {
+      id: `req_${Date.now()}`,
+      member_id: targetMember.id,
+      member_name: targetMember.name,
+      branch: targetMember.branch,
+      requested_by_user_id: user.user_id,
+      requested_by_name: user.name,
+      requested_by_email: user.email,
+      changes: changes || {},
+      reason: reason ? reason.trim() : 'Updated profile information',
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+
+    profileUpdateRequests.unshift(newRequest);
+
+    logAction(
+      { name: user.name, email: user.email, role: user.role },
+      'PROFILE_REQUEST_SUBMITTED',
+      `Profile: ${targetMember.name}`,
+      `Submitted ${Object.keys(newRequest.changes).length} proposed profile changes for administrator review`
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Profile update request submitted successfully. A Family Admin will review your changes shortly.',
+      request: newRequest,
+    });
+  });
+
+  // 3d. Profile Update Requests: POST Approve Request (Family Admin or Super Admin)
+  app.post('/api/profile-requests/:id/approve', (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.role !== 'super_admin' && user.role !== 'family_admin')) {
+      return res.status(403).json({ error: 'Administrator permission required to approve profile updates.' });
+    }
+
+    const reqId = req.params.id;
+    const requestIndex = profileUpdateRequests.findIndex(r => r.id === reqId);
+
+    if (requestIndex === -1) {
+      return res.status(404).json({ error: 'Profile request not found.' });
+    }
+
+    const profileReq = profileUpdateRequests[requestIndex];
+    const targetMember = members.find(m => m.id === profileReq.member_id);
+
+    if (!targetMember) {
+      return res.status(404).json({ error: 'Associated member profile no longer exists.' });
+    }
+
+    // Apply the proposed changes to the live member record!
+    if (profileReq.changes) {
+      for (const [field, item] of Object.entries(profileReq.changes)) {
+        if (item && item.proposed_value !== undefined) {
+          (targetMember as any)[field] = item.proposed_value;
+          // Sync account name if full name was modified
+          if (field === 'name') {
+            const acc = accounts.find(a => a.member_id === targetMember.id);
+            if (acc) acc.name = item.proposed_value;
+          }
+          if (field === 'branch') {
+            const acc = accounts.find(a => a.member_id === targetMember.id);
+            if (acc) acc.branch = item.proposed_value;
+          }
+        }
+      }
+    }
+
+    profileReq.status = 'approved';
+    profileReq.admin_notes = req.body.admin_notes || 'Approved by administrator';
+    profileReq.reviewed_by_name = `${user.name} (${user.role === 'super_admin' ? 'Super Admin' : 'Family Admin'})`;
+    profileReq.reviewed_at = new Date().toISOString();
+
+    logAction(
+      { name: user.name, email: user.email, role: user.role },
+      'PROFILE_REQUEST_APPROVED',
+      `Profile: ${targetMember.name}`,
+      `Approved and merged profile changes submitted by ${profileReq.requested_by_name}`
+    );
+
+    res.json({
+      success: true,
+      message: `Profile update request approved! Changes are now live on ${targetMember.name}'s official profile.`,
+      request: profileReq,
+      member: targetMember,
+    });
+  });
+
+  // 3e. Profile Update Requests: POST Reject Request (Family Admin or Super Admin)
+  app.post('/api/profile-requests/:id/reject', (req, res) => {
+    const user = (req as any).user;
+    if (!user || (user.role !== 'super_admin' && user.role !== 'family_admin')) {
+      return res.status(403).json({ error: 'Administrator permission required to review profile updates.' });
+    }
+
+    const reqId = req.params.id;
+    const requestIndex = profileUpdateRequests.findIndex(r => r.id === reqId);
+
+    if (requestIndex === -1) {
+      return res.status(404).json({ error: 'Profile request not found.' });
+    }
+
+    const profileReq = profileUpdateRequests[requestIndex];
+    profileReq.status = 'rejected';
+    profileReq.admin_notes = req.body.admin_notes || 'Proposed changes could not be verified.';
+    profileReq.reviewed_by_name = `${user.name} (${user.role === 'super_admin' ? 'Super Admin' : 'Family Admin'})`;
+    profileReq.reviewed_at = new Date().toISOString();
+
+    logAction(
+      { name: user.name, email: user.email, role: user.role },
+      'PROFILE_REQUEST_REJECTED',
+      `Profile: ${profileReq.member_name}`,
+      `Rejected profile changes submitted by ${profileReq.requested_by_name}. Reason: ${profileReq.admin_notes}`
+    );
+
+    res.json({
+      success: true,
+      message: 'Profile update request has been rejected.',
+      request: profileReq,
     });
   });
 
@@ -835,33 +1287,68 @@ async function startServer() {
         });
       }
 
-      // Check if normal member tried to modify forbidden fields:
-      const forbiddenFields = ['parents', 'children', 'spouse', 'branch', 'generation', 'owner_user_id'];
-      for (const field of forbiddenFields) {
+      // Detect sensitive fields that require admin approval
+      const sensitiveFields = ['name', 'birth', 'branch', 'parents', 'children', 'spouse'];
+      const sensitiveChanges: Record<string, { old_value: any; proposed_value: any; label: string }> = {};
+
+      const fieldLabels: Record<string, string> = {
+        name: 'Full Name',
+        birth: 'Date of Birth',
+        branch: 'Family Branch',
+        parents: 'Parents',
+        children: 'Children',
+        spouse: 'Spouse',
+      };
+
+      for (const field of sensitiveFields) {
         if (req.body[field] !== undefined && JSON.stringify(req.body[field]) !== JSON.stringify((targetMember as any)[field])) {
-          logAction(
-            { name: user.name, email: user.email, role: user.role },
-            'FORBIDDEN_FIELD_MODIFICATION',
-            `Profile: ${targetMember.name}`,
-            `Member attempted to alter restricted field '${field}'`,
-            false
-          );
-          return res.status(403).json({
-            error: `Permission Denied: Family relations, branches, and tree structures can only be modified by the Super Admin.`
-          });
+          sensitiveChanges[field] = {
+            old_value: (targetMember as any)[field],
+            proposed_value: req.body[field],
+            label: fieldLabels[field] || field,
+          };
         }
       }
 
-      // Allow updating only personal profile fields:
+      // If sensitive fields changed, submit them to profileUpdateRequests!
+      let pendingRequest: ProfileUpdateRequest | null = null;
+      if (Object.keys(sensitiveChanges).length > 0) {
+        pendingRequest = {
+          id: `req_${Date.now()}`,
+          member_id: targetMember.id,
+          member_name: targetMember.name,
+          branch: targetMember.branch,
+          requested_by_user_id: user.user_id,
+          requested_by_name: user.name,
+          requested_by_email: user.email,
+          changes: sensitiveChanges,
+          reason: req.body.reason || 'Submitted sensitive profile changes for administrator approval',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        };
+        profileUpdateRequests.unshift(pendingRequest);
+        logAction(
+          { name: user.name, email: user.email, role: user.role },
+          'PROFILE_APPROVAL_REQUEST_CREATED',
+          `Profile: ${targetMember.name}`,
+          `Sensitive fields (${Object.keys(sensitiveChanges).join(', ')}) queued for Family Admin approval`
+        );
+      }
+
+      // Allow updating safe personal profile fields directly:
       targetMember.bio = req.body.bio !== undefined ? req.body.bio : targetMember.bio;
       targetMember.avatar = req.body.avatar !== undefined ? req.body.avatar : targetMember.avatar;
-      targetMember.birth = req.body.birth !== undefined ? req.body.birth : targetMember.birth;
       targetMember.birthplace = req.body.birthplace !== undefined ? req.body.birthplace : targetMember.birthplace;
       targetMember.hometown = req.body.hometown !== undefined ? req.body.hometown : targetMember.hometown;
       targetMember.education = req.body.education !== undefined ? req.body.education : targetMember.education;
       targetMember.occupation = req.body.occupation !== undefined ? req.body.occupation : targetMember.occupation;
       targetMember.achievements = req.body.achievements !== undefined ? req.body.achievements : targetMember.achievements;
       targetMember.personal_notes = req.body.personal_notes !== undefined ? req.body.personal_notes : targetMember.personal_notes;
+
+      if (req.body.mobile !== undefined) {
+        const acc = accounts.find(a => a.member_id === targetMember.id || a.user_id === user.user_id);
+        if (acc) acc.mobile = req.body.mobile;
+      }
 
       if (req.body.personal_photos) {
         targetMember.personal_photos = req.body.personal_photos;
@@ -874,7 +1361,15 @@ async function startServer() {
         `Updated personal profile information (bio, occupation, education, achievements)`
       );
 
-      return res.json({ success: true, member: targetMember });
+      return res.json({
+        success: true,
+        member: targetMember,
+        has_pending_approval: pendingRequest !== null,
+        pending_request: pendingRequest,
+        message: pendingRequest
+          ? 'Personal details updated! Important changes (e.g. Name, Birth Date, Branch) have been submitted to Family Admins for review.'
+          : 'Profile updated successfully!',
+      });
     }
 
     // Super Admin Update: Allowed full control
@@ -1093,6 +1588,7 @@ async function startServer() {
       password_hash: 'password123',
       role: 'member',
       status: 'active',
+      email_verified: true,
       created_at: new Date().toISOString().split('T')[0],
       last_login: null,
     });
@@ -2050,6 +2546,7 @@ async function startServer() {
           role: 'member',
           status: 'active',
           name: target.name,
+          email_verified: true,
           created_at: new Date().toISOString().split('T')[0],
           last_login: null,
         });

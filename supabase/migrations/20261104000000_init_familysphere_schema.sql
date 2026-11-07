@@ -245,7 +245,24 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
   timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2.16 WEBSITE SETTINGS TABLE
+-- 2.16 PROFILE UPDATE REQUESTS TABLE (Ownership & 3-Tier Approval Workflow)
+CREATE TABLE IF NOT EXISTS public.profile_update_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  family_id UUID REFERENCES public.families(id) ON DELETE CASCADE,
+  member_id UUID NOT NULL REFERENCES public.family_members(id) ON DELETE CASCADE,
+  requested_by_user_id TEXT NOT NULL,
+  requested_by_name TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  changes JSONB NOT NULL, -- { "name": { "old_value": "...", "new_value": "..." } }
+  reason TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  admin_notes TEXT,
+  reviewed_by_name TEXT,
+  reviewed_at TIMESTAMPTZ,
+  submitted_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2.17 WEBSITE SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS public.website_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   key TEXT UNIQUE NOT NULL,
@@ -265,6 +282,8 @@ CREATE INDEX IF NOT EXISTS idx_photos_family_album ON public.family_photos(famil
 CREATE INDEX IF NOT EXISTS idx_heritage_family ON public.heritage_photos(family_id);
 CREATE INDEX IF NOT EXISTS idx_events_family_date ON public.family_events(family_id, date);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON public.activity_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_profile_requests_member ON public.profile_update_requests(member_id);
+CREATE INDEX IF NOT EXISTS idx_profile_requests_status ON public.profile_update_requests(status);
 
 -- ==============================================================================
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
@@ -280,6 +299,7 @@ ALTER TABLE public.family_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_rsvps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.family_stories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profile_update_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.access_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
@@ -347,6 +367,25 @@ CREATE POLICY "Anyone can read website settings" ON public.website_settings
 
 CREATE POLICY "Super Admins can modify website settings" ON public.website_settings
   FOR ALL USING (public.is_super_admin());
+
+-- 4.8 Profile Update Requests Policies (3-Tier RBAC)
+-- Members can view their own submitted change requests
+CREATE POLICY "Members can view own profile requests" ON public.profile_update_requests
+  FOR SELECT USING (requested_by_user_id = auth.uid()::text OR public.is_super_admin());
+
+-- Members can submit change requests for their owned profile
+CREATE POLICY "Members can submit profile requests" ON public.profile_update_requests
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Super Admins and Family Admins can update/approve/reject requests
+CREATE POLICY "Admins can manage profile update requests" ON public.profile_update_requests
+  FOR UPDATE USING (
+    public.is_super_admin() OR 
+    EXISTS (
+      SELECT 1 FROM public.user_profiles
+      WHERE user_id = auth.uid()::text AND role IN ('super_admin', 'family_admin')
+    )
+  );
 
 -- ==============================================================================
 -- 5. STORAGE BUCKETS SETUP

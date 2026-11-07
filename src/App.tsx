@@ -238,8 +238,27 @@ interface UserSession {
   member_id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'member';
+  role: 'super_admin' | 'family_admin' | 'member';
+  branch?: string;
+  mobile?: string;
+  email_verified?: boolean;
   avatar: string;
+}
+
+interface ProfileUpdateRequest {
+  id: string;
+  family_id: string;
+  member_id: string;
+  requested_by_user_id: string;
+  requested_by_name: string;
+  branch: string;
+  changes: Record<string, { old_value: any; new_value: any }>;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submitted_at: string;
+  reviewed_at?: string;
+  reviewed_by_name?: string;
+  admin_notes?: string;
 }
 
 interface Toast {
@@ -392,9 +411,10 @@ export default function App() {
   const [rsvpGuestsCount, setRsvpGuestsCount] = useState<number>(1);
   const [rsvpGuestName, setRsvpGuestName] = useState<string>('');
 
-  // 17 Modules in Super Admin Dashboard
+  // Modules in Admin Dashboard (including Profile Approvals)
   type AdminTabType =
     | 'overview'
+    | 'approvals'
     | 'families'
     | 'members'
     | 'branches'
@@ -414,6 +434,35 @@ export default function App() {
     | 'general';
 
   const [adminTab, setAdminTab] = useState<AdminTabType>('overview');
+
+  // Modern Minimal Glassmorphic Auth Modal State
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'forgot'>('login');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+
+  // Registration Form State
+  const [regName, setRegName] = useState<string>('');
+  const [regEmail, setRegEmail] = useState<string>('');
+  const [regMobile, setRegMobile] = useState<string>('');
+  const [regBranch, setRegBranch] = useState<string>('Sudhakar Ambulkar Family');
+  const [regPassword, setRegPassword] = useState<string>('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
+  const [regAvatar, setRegAvatar] = useState<string>('');
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState<boolean>(false);
+
+  // Forgot Password / Reset State
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
+  const [forgotEmailInput, setForgotEmailInput] = useState<string>('');
+  const [forgotOtpCode, setForgotOtpCode] = useState<string>('');
+  const [forgotNewPasswordInput, setForgotNewPasswordInput] = useState<string>('');
+
+  // Personal Profile Dashboard Modal State
+  const [isMemberDashboardOpen, setIsMemberDashboardOpen] = useState<boolean>(false);
+  const [memberDashboardTab, setMemberDashboardTab] = useState<'overview' | 'tree' | 'photos' | 'requests'>('overview');
+  const [profileRequestsList, setProfileRequestsList] = useState<ProfileUpdateRequest[]>([]);
+  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState<boolean>(false);
+  const [changeReasonInput, setChangeReasonInput] = useState<string>('Updated profile information');
 
   // Vault Login Form inputs
   const [vaultEmail, setVaultEmail] = useState<string>('sarthakambulkar09@gmail.com');
@@ -700,6 +749,22 @@ export default function App() {
     }
   };
 
+  const fetchProfileRequests = async () => {
+    const token = authToken || localStorage.getItem('familysphere_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/profile-requests', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfileRequestsList(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch profile requests:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAllData();
     checkSession();
@@ -708,6 +773,9 @@ export default function App() {
   useEffect(() => {
     if (authToken && currentUser?.role === 'super_admin') {
       fetchAdminSecureData();
+    }
+    if (authToken) {
+      fetchProfileRequests();
     }
   }, [authToken, currentUser]);
 
@@ -855,9 +923,32 @@ export default function App() {
     return currentUser.user_id === selectedMember.owner_user_id || currentUser.member_id === selectedMember.id;
   }, [currentUser, selectedMember]);
 
-  // Open Edit Profile Modal
+  // Profile Completion Percentage Calculator (100% Milestone Tracker)
+  const profileCompletionScore = useMemo(() => {
+    if (!myMemberRecord) return 0;
+    let score = 20; // base registered account
+    if (myMemberRecord.avatar && !myMemberRecord.avatar.includes('placeholder')) score += 15;
+    if (myMemberRecord.bio && myMemberRecord.bio.trim().length > 15) score += 20;
+    if (myMemberRecord.education && myMemberRecord.occupation) score += 15;
+    if (myMemberRecord.birth) score += 15;
+    if (myMemberRecord.personal_photos && myMemberRecord.personal_photos.length > 0) score += 15;
+    return Math.min(100, score);
+  }, [myMemberRecord]);
+
+  // Open Edit Profile Modal with Strict Profile Ownership Enforcement
   const openEditProfileModal = (member: Member) => {
     if (!member) return;
+
+    // CRITICAL SECURITY RULE:
+    // A logged-in member can edit ONLY their own profile. They must never be able to edit another family member's profile.
+    if (currentUser && currentUser.role !== 'super_admin') {
+      const isMyProfile = member.id === currentUser.member_id || member.owner_user_id === currentUser.user_id;
+      if (!isMyProfile) {
+        showToast('Permission Denied: A logged-in member can edit ONLY their own personal profile.', 'error');
+        return;
+      }
+    }
+
     setSelectedProfileId(member.id);
     setEditingMember(member);
     setEditFormData({
@@ -878,11 +969,20 @@ export default function App() {
     setIsEditProfileModalOpen(true);
   };
 
-  // Save Profile Edit
+  // Save Profile Edit (Direct Update for Safe Fields, Approval Queue for Sensitive Fields)
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const target = editingMember || selectedMember;
     if (!target || !authToken) return;
+
+    // Strict frontend verification as well
+    if (currentUser && currentUser.role !== 'super_admin') {
+      const isMyProfile = target.id === currentUser.member_id || target.owner_user_id === currentUser.user_id;
+      if (!isMyProfile) {
+        showToast('Permission Denied: You cannot modify another family member profile.', 'error');
+        return;
+      }
+    }
 
     try {
       const res = await fetch(`/api/members/${target.id}`, {
@@ -902,6 +1002,7 @@ export default function App() {
           achievements: editFormData.achievements,
           personal_notes: editFormData.personal_notes,
           personal_photos: editFormData.personal_photos,
+          reason: changeReasonInput || 'Updated profile details via portal',
         }),
       });
 
@@ -911,11 +1012,186 @@ export default function App() {
         return;
       }
 
-      showToast('Profile updated successfully!', 'success');
+      if (data.notice) {
+        showToast(data.notice, 'success');
+      } else {
+        showToast('Profile updated successfully!', 'success');
+      }
+
       setIsEditProfileModalOpen(false);
+      fetchProfileRequests();
       fetchAllData();
     } catch (err) {
       showToast('Error saving profile changes', 'error');
+    }
+  };
+
+  // Registration Form Submission Handler (Defaults strictly to Level 1 Member)
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regName.trim() || !regEmail.trim() || !regPassword) {
+      showToast('Please fill all required fields marked with *', 'error');
+      return;
+    }
+    if (regPassword.length < 6) {
+      showToast('Password must be at least 6 characters in length', 'error');
+      return;
+    }
+    if (regPassword !== regConfirmPassword) {
+      showToast('Passwords do not match. Please verify both password fields.', 'error');
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: regName.trim(),
+          email: regEmail.trim(),
+          mobile: regMobile.trim(),
+          branch: regBranch,
+          password: regPassword,
+          avatar: regAvatar.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Registration failed', 'error');
+        return;
+      }
+
+      localStorage.setItem('familysphere_token', data.token);
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      setIsAuthModalOpen(false);
+      setIsMemberDashboardOpen(true);
+      showToast(`Welcome to Ambulkar Lineage, ${data.user.name}! Account registered as Level 1 Member.`, 'success');
+      fetchAllData();
+      fetchProfileRequests();
+    } catch (err) {
+      showToast('Error connecting to registration service', 'error');
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  // Forgot Password Step 1: Send OTP Code
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmailInput.trim()) {
+      showToast('Please enter your registered family email', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmailInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to send reset code', 'error');
+        return;
+      }
+      showToast(`Verification code sent! For this demo, your code is: ${data.demo_code}`, 'success');
+      setForgotStep('verify');
+      if (data.demo_code) setForgotOtpCode(data.demo_code);
+    } catch (err) {
+      showToast('Error initiating password reset', 'error');
+    }
+  };
+
+  // Forgot Password Step 2: Confirm OTP & Set New Password
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotOtpCode.trim() || !forgotNewPasswordInput) {
+      showToast('Please enter the verification code and your new password', 'error');
+      return;
+    }
+    if (forgotNewPasswordInput.length < 6) {
+      showToast('New password must be at least 6 characters in length', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmailInput.trim(),
+          code: forgotOtpCode.trim(),
+          new_password: forgotNewPasswordInput,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Password reset failed', 'error');
+        return;
+      }
+
+      showToast('Password reset successfully! Please log in with your new password.', 'success');
+      setAuthModalTab('login');
+      setVaultPassword(forgotNewPasswordInput);
+    } catch (err) {
+      showToast('Error resetting password', 'error');
+    }
+  };
+
+  // Approve Profile Change Request (Level 2 Family Admin / Level 3 Super Admin)
+  const handleApproveProfileRequest = async (requestId: string, adminNotes?: string) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`/api/profile-requests/${requestId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ admin_notes: adminNotes || 'Approved by administrator' }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to approve update request', 'error');
+        return;
+      }
+
+      showToast('Profile change approved and merged into official member profile!', 'success');
+      fetchProfileRequests();
+      fetchAllData();
+    } catch (err) {
+      showToast('Error approving profile request', 'error');
+    }
+  };
+
+  // Reject Profile Change Request (Level 2 Family Admin / Level 3 Super Admin)
+  const handleRejectProfileRequest = async (requestId: string, adminNotes?: string) => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(`/api/profile-requests/${requestId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ admin_notes: adminNotes || 'Rejected by administrator' }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to reject update request', 'error');
+        return;
+      }
+
+      showToast('Profile change request marked as rejected', 'success');
+      fetchProfileRequests();
+    } catch (err) {
+      showToast('Error rejecting profile request', 'error');
     }
   };
 
@@ -1708,25 +1984,13 @@ export default function App() {
           )}
         </div>
 
-        {/* Public Desktop Navigation Links (Section Jumpers) */}
-        <nav className="hidden lg:flex items-center gap-6 text-xs font-bold">
+        {/* Public Desktop Navigation Links */}
+        <nav className="hidden lg:flex items-center gap-5 text-xs font-bold">
           <button
             onClick={() => scrollToSection('sec-hero')}
             className={`hover:text-indigo-600 transition ${activeSection === 'sec-hero' ? 'text-indigo-600 underline underline-offset-4' : 'text-midnight'}`}
           >
             Home
-          </button>
-          <button
-            onClick={() => scrollToSection('sec-heritage')}
-            className={`hover:text-indigo-600 transition ${activeSection === 'sec-heritage' ? 'text-indigo-600 underline underline-offset-4' : 'text-midnight'}`}
-          >
-            Heritage
-          </button>
-          <button
-            onClick={() => scrollToSection('sec-branches')}
-            className={`hover:text-indigo-600 transition ${activeSection === 'sec-branches' ? 'text-indigo-600 underline underline-offset-4' : 'text-midnight'}`}
-          >
-            Branches
           </button>
           <button
             onClick={() => scrollToSection('sec-tree')}
@@ -1738,8 +2002,33 @@ export default function App() {
             onClick={() => scrollToSection('sec-members')}
             className={`hover:text-indigo-600 transition ${activeSection === 'sec-members' ? 'text-indigo-600 underline underline-offset-4' : 'text-midnight'}`}
           >
-            Directory
+            Family Members
           </button>
+          {currentUser && (
+            <>
+              <button
+                onClick={() => {
+                  setMemberDashboardTab('overview');
+                  setIsMemberDashboardOpen(true);
+                }}
+                className="hover:text-indigo-600 transition text-indigo-700 flex items-center gap-1 font-extrabold"
+              >
+                <span>My Profile</span>
+                <span className="text-[10px] bg-indigo-100 px-1.5 py-0.2 rounded-full border border-indigo-200">
+                  {profileCompletionScore}%
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  if (myMemberRecord) openEditProfileModal(myMemberRecord);
+                  else if (selectedMember) openEditProfileModal(selectedMember);
+                }}
+                className="hover:text-indigo-600 transition text-midnight"
+              >
+                Edit Profile
+              </button>
+            </>
+          )}
           <button
             onClick={() => scrollToSection('sec-memories')}
             className={`hover:text-indigo-600 transition ${activeSection === 'sec-memories' ? 'text-indigo-600 underline underline-offset-4' : 'text-midnight'}`}
@@ -1785,41 +2074,144 @@ export default function App() {
             <Sparkles className="w-4 h-4 text-indigo-700" />
           </button>
 
-          {/* Member Login / Profile Hub in Nav */}
+          {/* Member Login / Profile Avatar Menu in Nav */}
           {currentUser ? (
-            <div className="flex items-center gap-2">
+            <div className="relative">
               <div
-                onClick={() => {
-                  setSelectedProfileId(currentUser.member_id);
-                  scrollToSection('sec-profile');
-                }}
-                className="flex items-center gap-2 p-1 bg-yellow-100 rounded-xl border border-midnight cursor-pointer hover:bg-yellow-200"
+                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                className="flex items-center gap-2 py-1 px-2 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl border-2 border-midnight cursor-pointer hover:bg-indigo-100 transition shadow-[2px_2px_0px_#172033]"
+                title="Account & Profile Menu"
               >
                 <img
                   src={currentUser.avatar}
                   alt={currentUser.name}
                   className="w-7 h-7 rounded-full object-cover border border-midnight"
                 />
-                <span className="text-xs font-bold text-midnight truncate max-w-[90px] sm:max-w-none">
-                  {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
-                </span>
+                <div className="text-left hidden sm:block">
+                  <span className="text-xs font-bold text-midnight block leading-tight">
+                    {currentUser.name ? currentUser.name.split(' ')[0] : 'Member'}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-indigo-700 block leading-none">
+                    {currentUser.role === 'super_admin' ? 'L3 Super Admin' : currentUser.role === 'family_admin' ? 'L2 Family Admin' : 'L1 Member'}
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-midnight ml-0.5" />
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 rounded-lg bg-gray-100 border border-midnight text-secondary hover:text-midnight"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+
+              {/* Account Dropdown Menu */}
+              {isAccountDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white/95 backdrop-blur-xl border-2 border-midnight rounded-2xl shadow-[6px_6px_0px_#172033] py-2 z-50 animate-fade-in text-xs">
+                  <div className="px-3.5 py-2 border-b border-gray-200">
+                    <p className="font-extrabold text-midnight truncate">{currentUser.name}</p>
+                    <p className="text-[10px] text-secondary truncate">{currentUser.email}</p>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                        {currentUser.role === 'super_admin' ? 'Level 3: Super Admin' : currentUser.role === 'family_admin' ? 'Level 2: Family Admin' : 'Level 1: Member'}
+                      </span>
+                      {currentUser.branch && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-900 truncate max-w-[120px]">
+                          {currentUser.branch.split(' ')[0]}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsAccountDropdownOpen(false);
+                      setMemberDashboardTab('overview');
+                      setIsMemberDashboardOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-indigo-50 font-bold text-midnight flex items-center gap-2"
+                  >
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>My Profile Dashboard</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsAccountDropdownOpen(false);
+                      if (myMemberRecord) openEditProfileModal(myMemberRecord);
+                      else if (selectedMember) openEditProfileModal(selectedMember);
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-indigo-50 font-bold text-midnight flex items-center gap-2"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Edit Profile Details</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsAccountDropdownOpen(false);
+                      scrollToSection('sec-tree');
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-indigo-50 font-bold text-midnight flex items-center gap-2"
+                  >
+                    <GitBranch className="w-3.5 h-3.5 text-purple-600" />
+                    <span>View Tree Connections</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsAccountDropdownOpen(false);
+                      setMemberDashboardTab('requests');
+                      setIsMemberDashboardOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-indigo-50 font-bold text-midnight flex items-center gap-2"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Profile Update Requests</span>
+                  </button>
+
+                  {(currentUser.role === 'super_admin' || currentUser.role === 'family_admin') && (
+                    <button
+                      onClick={() => {
+                        setIsAccountDropdownOpen(false);
+                        setIsSuperAdminDashboardOpen(true);
+                        setAdminTab('approvals');
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-amber-50 font-bold text-amber-900 border-t border-gray-100 flex items-center justify-between"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Crown className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Admin Approvals Panel</span>
+                      </span>
+                      {profileRequestsList.filter(r => r.status === 'pending').length > 0 && (
+                        <span className="bg-amber-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-black">
+                          {profileRequestsList.filter(r => r.status === 'pending').length}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  <div className="border-t border-gray-200 mt-1 pt-1">
+                    <button
+                      onClick={() => {
+                        setIsAccountDropdownOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-red-50 font-bold text-red-600 flex items-center gap-2"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
-            <button
-              onClick={() => scrollToSection('sec-auth')}
-              className="px-3.5 py-1.5 bg-midnight text-white text-xs font-bold rounded-xl border-2 border-midnight retro-btn flex items-center gap-1.5 hover:bg-slate-800"
-            >
-              <LogIn className="w-3.5 h-3.5 text-yellow-300" />
-              <span>Login</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setAuthModalTab('login');
+                  setIsAuthModalOpen(true);
+                }}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold rounded-xl border-2 border-midnight retro-btn flex items-center gap-1.5 shadow-[2px_2px_0px_#172033] hover:opacity-95"
+              >
+                <LogIn className="w-3.5 h-3.5 text-yellow-300" />
+                <span>Login / Register</span>
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -3258,12 +3650,43 @@ export default function App() {
                         className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs"
                       />
                     </div>
+                    <div className="flex items-center justify-between text-[11px] pt-1">
+                      <label className="flex items-center gap-1.5 cursor-pointer font-bold text-midnight">
+                        <input type="checkbox" defaultChecked className="accent-indigo-600 rounded" />
+                        <span>Remember Me</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthModalTab('forgot');
+                          setIsAuthModalOpen(true);
+                        }}
+                        className="text-indigo-600 font-bold hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+
                     <button
                       type="submit"
                       className="w-full py-3 bg-yellow-300 text-midnight rounded-xl font-bold text-xs retro-btn hover:bg-yellow-200 shadow-[3px_3px_0px_#172033]"
                     >
                       Sign In to Family Portal
                     </button>
+
+                    <div className="text-center pt-2 text-[11px] text-secondary">
+                      <span>Don't have an account yet? </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthModalTab('register');
+                          setIsAuthModalOpen(true);
+                        }}
+                        className="text-indigo-600 font-bold hover:underline ml-1"
+                      >
+                        Register as Family Member (Level 1)
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}
@@ -3400,37 +3823,45 @@ export default function App() {
                 <div className="flex-1 overflow-y-auto p-2.5 space-y-1">
                   {[
                     { id: 'overview', label: '1. Dashboard', icon: Activity },
-                    { id: 'families', label: '2. Family Management', icon: Crown },
-                    { id: 'members', label: '3. Family Members', icon: Users },
-                    { id: 'branches', label: '4. Family Branches', icon: GitBranch },
-                    { id: 'tree', label: '5. Family Tree', icon: Layers },
-                    { id: 'events', label: '6. Events Management', icon: Calendar },
-                    { id: 'photos', label: '7. Family Photos', icon: Camera },
-                    { id: 'albums', label: '8. Photo Albums', icon: FolderPlus },
-                    { id: 'stories', label: '9. Stories & Memories', icon: FileText },
-                    { id: 'access_requests', label: '10. Access Requests', icon: UserCheck },
-                    { id: 'users', label: '11. User Management', icon: Key },
-                    { id: 'notifications', label: '12. Notifications', icon: Bell },
-                    { id: 'website_content', label: '13. Website Content', icon: Globe },
-                    { id: 'theme', label: '14. Theme & FX', icon: Palette },
-                    { id: 'logs', label: '15. Activity Logs', icon: Database },
-                    { id: 'backup', label: '16. Database Backup', icon: Download },
-                    { id: 'general', label: '17. General Settings', icon: Settings },
-                    { id: 'supabase', label: '18. Supabase Backend', icon: Server },
+                    { id: 'approvals', label: '2. Profile Approvals', icon: UserCheck, count: profileRequestsList.filter(r => r.status === 'pending').length },
+                    { id: 'families', label: '3. Family Management', icon: Crown },
+                    { id: 'members', label: '4. Family Members', icon: Users },
+                    { id: 'branches', label: '5. Family Branches', icon: GitBranch },
+                    { id: 'tree', label: '6. Family Tree', icon: Layers },
+                    { id: 'events', label: '7. Events Management', icon: Calendar },
+                    { id: 'photos', label: '8. Family Photos', icon: Camera },
+                    { id: 'albums', label: '9. Photo Albums', icon: FolderPlus },
+                    { id: 'stories', label: '10. Stories & Memories', icon: FileText },
+                    { id: 'access_requests', label: '11. Access Requests', icon: UserCheck },
+                    { id: 'users', label: '12. User Management', icon: Key },
+                    { id: 'notifications', label: '13. Notifications', icon: Bell },
+                    { id: 'website_content', label: '14. Website Content', icon: Globe },
+                    { id: 'theme', label: '15. Theme & FX', icon: Palette },
+                    { id: 'logs', label: '16. Activity Logs', icon: Database },
+                    { id: 'backup', label: '17. Database Backup', icon: Download },
+                    { id: 'general', label: '18. General Settings', icon: Settings },
+                    { id: 'supabase', label: '19. Supabase Backend', icon: Server },
                   ].map(item => {
                     const Icon = item.icon;
                     return (
                       <button
                         key={item.id}
                         onClick={() => setAdminTab(item.id as AdminTabType)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-left transition ${
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-left transition ${
                           adminTab === item.id
                             ? 'bg-indigo-600 text-white shadow-[2px_2px_0px_#172033]'
                             : 'text-secondary hover:bg-indigo-50 hover:text-midnight'
                         }`}
                       >
-                        <Icon className="w-4 h-4 shrink-0" />
-                        <span className="truncate">{item.label}</span>
+                        <div className="flex items-center gap-2.5 truncate">
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {item.count && item.count > 0 ? (
+                          <span className="bg-amber-400 text-midnight text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0">
+                            {item.count}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -3463,6 +3894,7 @@ export default function App() {
                   </span>
                   <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-midnight mt-1">
                     {adminTab === 'overview' && 'Dynasty Dashboard & Analytics'}
+                    {adminTab === 'approvals' && 'Profile Update Approvals (3-Tier Governance)'}
                     {adminTab === 'families' && 'Multi-Family Dynasty Management'}
                     {adminTab === 'members' && 'Family Members Directory & Hierarchy'}
                     {adminTab === 'branches' && 'Family Branches & Head Members'}
@@ -3498,6 +3930,192 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {/* MODULE: PROFILE UPDATE APPROVALS (3-TIER GOVERNANCE) */}
+              {adminTab === 'approvals' && (
+                <div className="space-y-6 text-xs text-left">
+                  {/* Explanatory Banner */}
+                  <div className="notebook-card p-5 bg-gradient-to-r from-amber-50 via-yellow-50 to-orange-50 border-2 border-midnight">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl bg-amber-400 border border-midnight flex items-center justify-center font-bold text-midnight shadow-[2px_2px_0px_#172033]">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-heading font-black text-lg text-midnight">
+                          Lineage Profile Ownership &amp; Change Approval Queue
+                        </h3>
+                        <p className="text-secondary text-[11px]">
+                          Level 1 Family Members can update safe personal fields directly. Critical identity fields (Full Name, Date of Birth, Branch, Relationships) require approval from the Branch Admin or Super Admin before updating the official lineage records.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-amber-200">
+                      <div className="p-3 bg-white rounded-xl border border-midnight text-center">
+                        <span className="text-secondary font-bold text-[10px]">PENDING APPROVAL</span>
+                        <h4 className="text-2xl font-black text-amber-600 mt-0.5">
+                          {profileRequestsList.filter(r => r.status === 'pending').length}
+                        </h4>
+                      </div>
+                      <div className="p-3 bg-white rounded-xl border border-midnight text-center">
+                        <span className="text-secondary font-bold text-[10px]">APPROVED &amp; MERGED</span>
+                        <h4 className="text-2xl font-black text-emerald-600 mt-0.5">
+                          {profileRequestsList.filter(r => r.status === 'approved').length}
+                        </h4>
+                      </div>
+                      <div className="p-3 bg-white rounded-xl border border-midnight text-center">
+                        <span className="text-secondary font-bold text-[10px]">REJECTED</span>
+                        <h4 className="text-2xl font-black text-red-600 mt-0.5">
+                          {profileRequestsList.filter(r => r.status === 'rejected').length}
+                        </h4>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PENDING REQUESTS CARDS */}
+                  <div className="space-y-4">
+                    <h3 className="font-heading font-extrabold text-base text-midnight flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span>Pending Change Requests ({profileRequestsList.filter(r => r.status === 'pending').length})</span>
+                    </h3>
+
+                    {profileRequestsList.filter(r => r.status === 'pending').length === 0 ? (
+                      <div className="p-8 text-center bg-white rounded-2xl border-2 border-midnight shadow-sm">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                        <h4 className="font-bold text-sm text-midnight">All Lineage Records In Sync</h4>
+                        <p className="text-secondary text-xs mt-1">There are no pending profile change requests requiring verification.</p>
+                      </div>
+                    ) : (
+                      profileRequestsList.filter(r => r.status === 'pending').map(req => {
+                        const targetMember = membersList.find(m => m.id === req.member_id);
+                        return (
+                          <div
+                            key={req.id}
+                            className="notebook-card p-5 bg-white border-2 border-midnight shadow-[4px_4px_0px_#172033] space-y-4"
+                          >
+                            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 pb-3 border-b border-gray-200">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={targetMember?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'}
+                                  alt={req.requested_by_name}
+                                  className="w-10 h-10 rounded-full object-cover border border-midnight"
+                                />
+                                <div>
+                                  <h4 className="font-heading font-bold text-sm text-midnight">
+                                    {targetMember?.name || req.requested_by_name}
+                                  </h4>
+                                  <p className="text-[11px] text-secondary">
+                                    Submitted by <strong>{req.requested_by_name}</strong> • Branch: <span className="text-indigo-600 font-bold">{req.branch}</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full font-bold text-[10px] w-fit">
+                                Pending Admin Review
+                              </span>
+                            </div>
+
+                            {/* Reason for change */}
+                            <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs">
+                              <span className="font-bold text-indigo-950">Member Stated Reason: </span>
+                              <span className="text-indigo-900 italic">"{req.reason || 'Requested profile detail correction'}"</span>
+                            </div>
+
+                            {/* Diff Table (Old vs New) */}
+                            <div className="border border-midnight rounded-xl overflow-hidden bg-gray-50/50">
+                              <table className="w-full text-xs">
+                                <thead className="bg-gray-100 border-b border-midnight font-bold text-midnight">
+                                  <tr>
+                                    <th className="p-2.5 text-left w-1/4">Field</th>
+                                    <th className="p-2.5 text-left w-3/8 text-red-700">Official Current Value</th>
+                                    <th className="p-2.5 text-left w-3/8 text-emerald-700">Proposed New Value</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {Object.entries(req.changes || {}).map(([field, diff]: [string, any], i) => (
+                                    <tr key={i} className="border-b border-gray-200 bg-white">
+                                      <td className="p-2.5 font-bold text-midnight uppercase tracking-wide text-[10px]">
+                                        {field.replace(/_/g, ' ')}
+                                      </td>
+                                      <td className="p-2.5 text-red-600 line-through">
+                                        {typeof diff.old_value === 'object' ? JSON.stringify(diff.old_value) : String(diff.old_value || 'None')}
+                                      </td>
+                                      <td className="p-2.5 font-bold text-emerald-700 bg-emerald-50/40">
+                                        {typeof diff.new_value === 'object' ? JSON.stringify(diff.new_value) : String(diff.new_value || 'None')}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Admin Action Buttons */}
+                            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                              <div className="text-[11px] text-secondary">
+                                Submitted on: {new Date(req.submitted_at).toLocaleString()}
+                              </div>
+                              <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectProfileRequest(req.id, 'Change details could not be verified by admin')}
+                                  className="flex-1 sm:flex-none px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-xl font-bold text-xs border border-red-300 flex items-center justify-center gap-1.5 transition"
+                                >
+                                  <UserX className="w-3.5 h-3.5" /> Reject Request
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveProfileRequest(req.id, 'Verified and approved by family administrator')}
+                                  className="flex-1 sm:flex-none px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs border-2 border-midnight retro-btn shadow-[2px_2px_0px_#172033] flex items-center justify-center gap-1.5 transition"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Approve &amp; Update Profile
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* HISTORICAL RESOLVED REQUESTS */}
+                  {profileRequestsList.filter(r => r.status !== 'pending').length > 0 && (
+                    <div className="space-y-3 pt-6 border-t border-gray-300">
+                      <h3 className="font-heading font-extrabold text-base text-midnight">
+                        Historical Approvals &amp; Decisions ({profileRequestsList.filter(r => r.status !== 'pending').length})
+                      </h3>
+                      <div className="border-2 border-midnight rounded-xl overflow-hidden bg-white shadow-sm">
+                        <table className="w-full text-xs">
+                          <thead className="bg-gray-100 border-b border-midnight font-bold text-midnight">
+                            <tr>
+                              <th className="p-2.5 text-left">Member</th>
+                              <th className="p-2.5 text-left">Branch</th>
+                              <th className="p-2.5 text-left">Fields</th>
+                              <th className="p-2.5 text-left">Status</th>
+                              <th className="p-2.5 text-left">Reviewed By</th>
+                              <th className="p-2.5 text-left">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {profileRequestsList.filter(r => r.status !== 'pending').map(h => (
+                              <tr key={h.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td className="p-2.5 font-bold">{h.requested_by_name}</td>
+                                <td className="p-2.5">{h.branch}</td>
+                                <td className="p-2.5 font-mono text-[11px]">{Object.keys(h.changes || {}).join(', ')}</td>
+                                <td className="p-2.5">
+                                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${h.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                                    {h.status.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-secondary">{h.reviewed_by_name || 'Admin'}</td>
+                                <td className="p-2.5 text-secondary">{h.admin_notes || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* MODULE 1: OVERVIEW DASHBOARD */}
               {adminTab === 'overview' && (
@@ -5544,14 +6162,86 @@ export default function App() {
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="font-heading font-extrabold text-2xl text-midnight mb-1">
-              Edit Profile: {selectedMember?.name}
-            </h3>
-            <p className="text-xs text-secondary mb-6">
-              Owner Verified. Add direct photos from your device gallery.
-            </p>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="p-2 bg-yellow-300 rounded-xl border border-midnight">
+                <Edit3 className="w-5 h-5 text-indigo-700" />
+              </span>
+              <div>
+                <h3 className="font-heading font-extrabold text-2xl text-midnight">
+                  Edit Profile: {selectedMember?.name}
+                </h3>
+                <p className="text-xs text-secondary">
+                  Owner Verified. Safe fields update immediately; identity fields undergo Family Admin review.
+                </p>
+              </div>
+            </div>
 
-            <form onSubmit={handleSaveProfile} className="space-y-4">
+            <form onSubmit={handleSaveProfile} className="space-y-4 mt-4">
+              {/* Full Name & Branch Note */}
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-300">
+                <label className="block font-bold text-midnight mb-1">
+                  Full Name <span className="text-[10px] text-amber-800 font-semibold">(Sensitive field: queued for Family Admin approval)</span>
+                </label>
+                <input
+                  type="text"
+                  value={selectedMember?.name || ''}
+                  onChange={e => {
+                    if (selectedMember) {
+                      setMembersList(prev => prev.map(m => m.id === selectedMember.id ? { ...m, name: e.target.value } : m));
+                    }
+                  }}
+                  className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white"
+                />
+              </div>
+
+              {/* Date of Birth & Hometown */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={editFormData.birth}
+                    onChange={e => setEditFormData({ ...editFormData, birth: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Hometown / Origin</label>
+                  <input
+                    type="text"
+                    value={editFormData.hometown}
+                    onChange={e => setEditFormData({ ...editFormData, hometown: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white"
+                    placeholder="e.g. Pune, Maharashtra"
+                  />
+                </div>
+              </div>
+
+              {/* Education & Occupation */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Education / Degrees</label>
+                  <input
+                    type="text"
+                    value={editFormData.education}
+                    onChange={e => setEditFormData({ ...editFormData, education: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white"
+                    placeholder="e.g. BE Computer Engineering"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Occupation / Profession</label>
+                  <input
+                    type="text"
+                    value={editFormData.occupation}
+                    onChange={e => setEditFormData({ ...editFormData, occupation: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white"
+                    placeholder="e.g. Software Engineer"
+                  />
+                </div>
+              </div>
+
+              {/* Bio */}
               <div>
                 <label className="block font-bold mb-1">Biography / Personal Journey</label>
                 <textarea
@@ -5559,6 +6249,19 @@ export default function App() {
                   value={editFormData.bio}
                   onChange={e => setEditFormData({ ...editFormData, bio: e.target.value })}
                   className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs"
+                  placeholder="Share your personal story, values, and accomplishments..."
+                />
+              </div>
+
+              {/* Reason for Change */}
+              <div>
+                <label className="block font-bold mb-1">Reason / Notes for Update</label>
+                <input
+                  type="text"
+                  value={changeReasonInput}
+                  onChange={e => setChangeReasonInput(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs"
+                  placeholder="e.g. Updated education degree and added new family photos"
                 />
               </div>
 
@@ -5639,6 +6342,680 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 
+        MODAL: MODERN MINIMAL GLASSMORPHIC AUTHENTICATION MODAL (LOGIN / REGISTER / FORGOT PASSWORD)
+        Theme: Icy lavender-white, 26px rounded panels, pink/cyan/violet glows, password toggle
+      */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">
+          {/* Ambient Glowing Orbs */}
+          <div className="absolute w-96 h-96 bg-pink-400/20 rounded-full blur-3xl pointer-events-none -top-10 -left-10" />
+          <div className="absolute w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl pointer-events-none -bottom-10 -right-10" />
+          <div className="absolute w-80 h-80 bg-violet-500/20 rounded-full blur-3xl pointer-events-none top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+
+          <div className="relative w-full max-w-lg bg-gradient-to-br from-white/95 via-indigo-50/90 to-purple-50/90 backdrop-blur-2xl border-2 border-indigo-200/80 rounded-[26px] p-6 sm:p-8 shadow-[0_25px_60px_-15px_rgba(99,102,241,0.3)] text-left text-xs max-h-[92vh] overflow-y-auto">
+            <button
+              onClick={() => setIsAuthModalOpen(false)}
+              className="absolute right-5 top-5 p-2 text-slate-400 hover:text-slate-800 rounded-full transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Brand Header */}
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-yellow-300 to-amber-300 border-2 border-midnight flex items-center justify-center text-xl mx-auto mb-2 shadow-[2px_2px_0px_#172033]">
+                👑
+              </div>
+              <h2 className="font-heading font-black text-2xl text-slate-900 tracking-tight">FamilySphere Portal</h2>
+              <p className="text-indigo-600 font-bold uppercase tracking-wider text-[10px] mt-0.5">Ambulkar Dynasty Lineage Access</p>
+            </div>
+
+            {/* Tab Switcher */}
+            <div className="flex bg-slate-200/60 p-1 rounded-2xl mb-6 border border-slate-300/60">
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('login')}
+                className={`flex-1 py-2 text-center font-bold text-xs rounded-xl transition ${authModalTab === 'login' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('register')}
+                className={`flex-1 py-2 text-center font-bold text-xs rounded-xl transition ${authModalTab === 'register' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Register as Member
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('forgot')}
+                className={`flex-1 py-2 text-center font-bold text-xs rounded-xl transition ${authModalTab === 'forgot' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Reset Password
+              </button>
+            </div>
+
+            {/* TAB 1: LOGIN */}
+            {authModalTab === 'login' && (
+              <div className="space-y-4">
+                {/* One-Click Demo Switcher */}
+                <div className="p-3.5 bg-indigo-50/80 rounded-2xl border border-indigo-200">
+                  <p className="font-bold text-slate-800 text-[11px] mb-2 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Quick One-Click Demo Sign-In (Select Role):</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'Sarthak (Super Admin)', email: 'sarthakambulkar09@gmail.com', role: 'Super Admin' },
+                      { name: 'Dr. Swapnil (Family Admin)', email: 'swapnil@ambulkar.family', role: 'Family Admin' },
+                      { name: 'Sagar (Member / Twin)', email: 'sagar@ambulkar.family', role: 'Member' },
+                      { name: 'Maratherao (Patriarch)', email: 'maratherao@ambulkar.family', role: 'Founder' },
+                    ].map(acc => (
+                      <button
+                        key={acc.email}
+                        type="button"
+                        onClick={async () => {
+                          setVaultEmail(acc.email);
+                          setVaultPassword('password123');
+                          try {
+                            const res = await fetch('/api/auth/login', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ email: acc.email, password: 'password123' }),
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              localStorage.setItem('familysphere_token', data.token);
+                              setAuthToken(data.token);
+                              setCurrentUser(data.user);
+                              setIsAuthModalOpen(false);
+                              setIsMemberDashboardOpen(true);
+                              showToast(`Authenticated as ${data.user.name} (${acc.role})!`, 'success');
+                              fetchProfileRequests();
+                            }
+                          } catch (e) {
+                            showToast('Login error', 'error');
+                          }
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-yellow-50 text-slate-800 border border-slate-300 rounded-lg font-bold text-[10px] transition shadow-xs"
+                      >
+                        {acc.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    try {
+                      const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: vaultEmail, password: vaultPassword }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        localStorage.setItem('familysphere_token', data.token);
+                        setAuthToken(data.token);
+                        setCurrentUser(data.user);
+                        setIsAuthModalOpen(false);
+                        setIsMemberDashboardOpen(true);
+                        showToast(`Welcome back, ${data.user.name}!`, 'success');
+                        fetchProfileRequests();
+                      } else {
+                        showToast(data.error || 'Login failed', 'error');
+                      }
+                    } catch (err) {
+                      showToast('Login connection error', 'error');
+                    }
+                  }}
+                  className="space-y-3.5"
+                >
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={vaultEmail}
+                      onChange={e => setVaultEmail(e.target.value)}
+                      placeholder="name@ambulkar.family"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 bg-white text-xs outline-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="font-bold text-slate-800">Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setAuthModalTab('forgot')}
+                        className="text-[11px] text-indigo-600 font-bold hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={vaultPassword}
+                        onChange={e => setVaultPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 bg-white text-xs outline-none transition"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px]">
+                    <label className="flex items-center gap-1.5 text-slate-700 cursor-pointer font-semibold">
+                      <input type="checkbox" defaultChecked className="rounded accent-indigo-600" />
+                      <span>Remember Me</span>
+                    </label>
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Email Verified Access
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl font-bold text-xs shadow-md transition transform active:scale-98"
+                  >
+                    Sign In to Family Dashboard
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* TAB 2: REGISTER */}
+            {authModalTab === 'register' && (
+              <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={regName}
+                    onChange={e => setRegName(e.target.value)}
+                    placeholder="e.g. Anand Ambulkar"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Email Address *</label>
+                    <input
+                      type="email"
+                      required
+                      value={regEmail}
+                      onChange={e => setRegEmail(e.target.value)}
+                      placeholder="name@ambulkar.family"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Mobile Number (Optional)</label>
+                    <input
+                      type="tel"
+                      value={regMobile}
+                      onChange={e => setRegMobile(e.target.value)}
+                      placeholder="+91 98220 00000"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Family Branch *</label>
+                  <select
+                    value={regBranch}
+                    onChange={e => setRegBranch(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none font-bold"
+                  >
+                    <option value="Sudhakar Ambulkar Family">Sudhakar Ambulkar Family (Senior Branch)</option>
+                    <option value="Eknath Ambulkar Family">Eknath Ambulkar Family (Engineering &amp; Tech)</option>
+                    <option value="Prakash Ambulkar Family">Prakash Ambulkar Family (Commerce &amp; Agri)</option>
+                    <option value="Krushana Ambulkar Family">Krushana Ambulkar Family (Medical &amp; Edu)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Password *</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={regPassword}
+                        onChange={e => setRegPassword(e.target.value)}
+                        placeholder="Min 6 characters"
+                        className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Confirm Password *</label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={regConfirmPassword}
+                        onChange={e => setRegConfirmPassword(e.target.value)}
+                        placeholder="Re-enter password"
+                        className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Profile Photo URL (Optional)</label>
+                  <input
+                    type="url"
+                    value={regAvatar}
+                    onChange={e => setRegAvatar(e.target.value)}
+                    placeholder="https://images.unsplash.com/... (or add later)"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                  />
+                </div>
+
+                <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 text-[11px] text-indigo-900">
+                  🛡️ <strong>Level 1 Member Registration:</strong> Accounts strictly register with family member privileges. Admin roles must be granted by the Super Admin in the central lineage directory.
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAuthSubmitting}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-xs shadow-md transition"
+                >
+                  {isAuthSubmitting ? 'Registering...' : 'Create Family Member Account'}
+                </button>
+              </form>
+            )}
+
+            {/* TAB 3: FORGOT PASSWORD */}
+            {authModalTab === 'forgot' && (
+              <div className="space-y-4">
+                <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 text-[11px] text-indigo-900">
+                  🔒 Enter your registered email address to receive an immediate 6-digit verification code.
+                </div>
+
+                {forgotStep === 'request' ? (
+                  <form onSubmit={handleForgotSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">Registered Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        value={forgotEmailInput}
+                        onChange={e => setForgotEmailInput(e.target.value)}
+                        placeholder="name@ambulkar.family"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition"
+                    >
+                      Send 6-Digit Verification Code
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">6-Digit Verification Code</label>
+                      <input
+                        type="text"
+                        required
+                        maxLength={6}
+                        value={forgotOtpCode}
+                        onChange={e => setForgotOtpCode(e.target.value)}
+                        placeholder="e.g. 582914"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">New Password (Min 6 chars)</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={forgotNewPasswordInput}
+                        onChange={e => setForgotNewPasswordInput(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs outline-none"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md transition"
+                    >
+                      Confirm New Password
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 
+        MODAL: DEDICATED PERSONAL PROFILE DASHBOARD
+        Displaying member name, avatar, branch, tree connections, profile completion score,
+        personal photos with direct upload, and update requests history.
+      */}
+      {isMemberDashboardOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-midnight/70 backdrop-blur-md animate-fade-in text-left text-xs">
+          <div className="relative w-full max-w-4xl bg-white rounded-[26px] border-2 border-midnight p-6 md:p-8 shadow-[12px_12px_0px_#172033] max-h-[92vh] overflow-y-auto">
+            <button
+              onClick={() => setIsMemberDashboardOpen(false)}
+              className="absolute right-5 top-5 p-2 text-secondary hover:text-midnight rounded-full"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Banner Header */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 p-5 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 rounded-2xl border-2 border-midnight shadow-[3px_3px_0px_#172033] mb-6">
+              <div className="flex items-center gap-4">
+                <div className="relative group">
+                  <img
+                    src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'}
+                    alt={currentUser?.name}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-midnight shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => portalAvatarInputRef.current?.click()}
+                    title="Change Avatar from Gallery"
+                    className="absolute -bottom-1 -right-1 p-1 bg-yellow-300 text-midnight rounded-full border border-midnight shadow hover:bg-yellow-200"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div>
+                  <h2 className="font-heading font-black text-xl text-midnight">{currentUser?.name}</h2>
+                  <p className="text-secondary text-xs">{currentUser?.email}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <span className="px-2.5 py-0.5 rounded-full font-extrabold text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-300">
+                      {currentUser?.role === 'super_admin' ? 'Level 3 • Super Admin' : currentUser?.role === 'family_admin' ? 'Level 2 • Family Admin' : 'Level 1 • Family Member'}
+                    </span>
+                    {currentUser?.branch && (
+                      <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-yellow-200 text-midnight border border-yellow-300">
+                        {currentUser.branch}
+                      </span>
+                    )}
+                    <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Email Verified
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => {
+                    if (myMemberRecord) openEditProfileModal(myMemberRecord);
+                    else if (selectedMember) openEditProfileModal(selectedMember);
+                  }}
+                  className="px-4 py-2 bg-yellow-300 hover:bg-yellow-200 text-midnight rounded-xl font-bold retro-btn border-2 border-midnight flex items-center gap-1.5 shadow-[2px_2px_0px_#172033]"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-indigo-700" /> Edit My Profile
+                </button>
+              </div>
+            </div>
+
+            {/* Dashboard Tabs */}
+            <div className="flex gap-2 mb-6 border-b border-gray-200 pb-3 overflow-x-auto">
+              {[
+                { id: 'overview', label: 'Overview & Milestones', icon: Award },
+                { id: 'tree', label: 'Tree Kinship Connections', icon: GitBranch },
+                { id: 'photos', label: `Personal Photographs (${myMemberRecord?.personal_photos?.length || 0})`, icon: Camera },
+                { id: 'requests', label: `Update Requests History (${profileRequestsList.filter(r => r.requested_by_user_id === currentUser?.user_id || r.member_id === currentUser?.member_id).length})`, icon: FileText },
+              ].map(tab => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setMemberDashboardTab(tab.id as any)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap ${memberDashboardTab === tab.id ? 'bg-indigo-600 text-white shadow-[2px_2px_0px_#172033]' : 'bg-gray-100 text-secondary hover:text-midnight'}`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* TAB 1: OVERVIEW */}
+            {memberDashboardTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Profile Completion Bar */}
+                <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 rounded-2xl border-2 border-midnight shadow-sm">
+                  <div className="flex justify-between items-center mb-2">
+                    <div>
+                      <h4 className="font-heading font-extrabold text-sm text-midnight flex items-center gap-2">
+                        <Award className="w-4 h-4 text-emerald-600" />
+                        <span>Profile Completion Strength</span>
+                      </h4>
+                      <p className="text-[11px] text-secondary">
+                        A detailed profile preserves rich personal memories for future generations.
+                      </p>
+                    </div>
+                    <span className="font-black text-xl text-emerald-600">{profileCompletionScore}%</span>
+                  </div>
+                  <div className="w-full h-3 bg-white border border-midnight rounded-full overflow-hidden shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 transition-all duration-500"
+                      style={{ width: `${profileCompletionScore}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-emerald-200 text-[10px]">
+                    <span className="flex items-center gap-1 text-emerald-900 font-bold">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Account Created (20%)
+                    </span>
+                    <span className={`flex items-center gap-1 font-bold ${myMemberRecord?.avatar ? 'text-emerald-900' : 'text-slate-400'}`}>
+                      <CheckCircle2 className="w-3 h-3" /> Profile Photo (15%)
+                    </span>
+                    <span className={`flex items-center gap-1 font-bold ${myMemberRecord?.bio && myMemberRecord.bio.length > 15 ? 'text-emerald-900' : 'text-slate-400'}`}>
+                      <CheckCircle2 className="w-3 h-3" /> Biography (20%)
+                    </span>
+                    <span className={`flex items-center gap-1 font-bold ${myMemberRecord?.education && myMemberRecord?.occupation ? 'text-emerald-900' : 'text-slate-400'}`}>
+                      <CheckCircle2 className="w-3 h-3" /> Education &amp; Job (15%)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bio & Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-5 bg-white rounded-2xl border-2 border-midnight shadow-sm space-y-3">
+                    <h4 className="font-heading font-bold text-sm text-midnight">Personal Biography</h4>
+                    <p className="text-secondary leading-relaxed text-[11px]">
+                      {myMemberRecord?.bio || 'No biography written yet. Click "Edit My Profile" above to share your journey.'}
+                    </p>
+                  </div>
+                  <div className="p-5 bg-white rounded-2xl border-2 border-midnight shadow-sm space-y-2">
+                    <h4 className="font-heading font-bold text-sm text-midnight">Personal Details</h4>
+                    <div className="space-y-1.5 text-[11px]">
+                      <p><strong>🎓 Education:</strong> {myMemberRecord?.education || 'Not specified'}</p>
+                      <p><strong>💼 Occupation:</strong> {myMemberRecord?.occupation || 'Not specified'}</p>
+                      <p><strong>🎂 Date of Birth:</strong> {myMemberRecord?.birth || 'Not recorded'}</p>
+                      <p><strong>📍 Birthplace:</strong> {myMemberRecord?.birthplace || 'Maharashtra, India'}</p>
+                      <p><strong>🏡 Hometown:</strong> {myMemberRecord?.hometown || 'Pune, Maharashtra'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: TREE CONNECTIONS */}
+            {memberDashboardTab === 'tree' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-indigo-50/70 rounded-2xl border border-indigo-200">
+                  <h4 className="font-heading font-bold text-sm text-midnight mb-1">Lineage Kinship Links</h4>
+                  <p className="text-[11px] text-secondary">
+                    Official genealogical connections verified in the Ambulkar Dynasty archive.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-4 bg-white rounded-xl border-2 border-midnight text-center">
+                    <span className="text-indigo-600 font-extrabold text-[10px] uppercase">Parents</span>
+                    <p className="font-bold text-midnight text-xs mt-1">
+                      {myMemberRecord?.parents && myMemberRecord.parents.length > 0 ? myMemberRecord.parents.join(' & ') : 'Ancestral Generation 1'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white rounded-xl border-2 border-midnight text-center">
+                    <span className="text-pink-600 font-extrabold text-[10px] uppercase">Spouse</span>
+                    <p className="font-bold text-midnight text-xs mt-1">
+                      {myMemberRecord?.spouse || 'None Recorded'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white rounded-xl border-2 border-midnight text-center">
+                    <span className="text-emerald-600 font-extrabold text-[10px] uppercase">Siblings</span>
+                    <p className="font-bold text-midnight text-xs mt-1">
+                      {myMemberRecord?.siblings && myMemberRecord.siblings.length > 0 ? myMemberRecord.siblings.join(', ') : 'None Recorded'}
+                    </p>
+                    {myMemberRecord?.isTwin && (
+                      <span className="mt-1 inline-block px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded font-bold text-[9px]">
+                        ♊ Twin Brother of Dr. Swapnil
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4 bg-white rounded-xl border-2 border-midnight text-center">
+                    <span className="text-amber-600 font-extrabold text-[10px] uppercase">Children</span>
+                    <p className="font-bold text-midnight text-xs mt-1">
+                      {myMemberRecord?.children && myMemberRecord.children.length > 0 ? myMemberRecord.children.join(', ') : 'None'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: PERSONAL PHOTOS */}
+            {memberDashboardTab === 'photos' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="font-heading font-bold text-sm text-midnight">Personal Photo Album</h4>
+                    <p className="text-[11px] text-secondary">Photographs uploaded directly from your device gallery.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => portalGalleryInputRef.current?.click()}
+                    className="px-4 py-2 bg-yellow-300 hover:bg-yellow-200 text-midnight rounded-xl font-bold retro-btn border border-midnight shadow-sm flex items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> + Upload from Device
+                  </button>
+                </div>
+
+                {myMemberRecord?.personal_photos && myMemberRecord.personal_photos.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {myMemberRecord.personal_photos.map((p, idx) => (
+                      <div key={p.id || idx} className="relative group border-2 border-midnight rounded-xl overflow-hidden bg-white shadow-xs">
+                        <img src={p.url} alt={p.caption} className="w-full h-28 object-cover" />
+                        <div className="p-2">
+                          <p className="font-bold text-midnight truncate text-[11px]">{p.caption}</p>
+                          <span className="text-[10px] text-secondary">{p.date}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDirectDeleteAccountPhoto(p.id)}
+                          className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
+                    <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="font-bold text-midnight">No personal photos uploaded yet</p>
+                    <p className="text-[11px] text-secondary mt-1">Click "+ Upload from Device" to add photos from your phone or laptop.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 4: UPDATE REQUESTS HISTORY */}
+            {memberDashboardTab === 'requests' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-indigo-50/70 rounded-2xl border border-indigo-200">
+                  <h4 className="font-heading font-bold text-sm text-midnight mb-1">My Submitted Profile Change Requests</h4>
+                  <p className="text-[11px] text-secondary">
+                    Changes to critical fields are held in pending review until approved by your Family Admin or Super Admin.
+                  </p>
+                </div>
+
+                {profileRequestsList.filter(r => r.requested_by_user_id === currentUser?.user_id || r.member_id === currentUser?.member_id).length === 0 ? (
+                  <div className="p-8 text-center border border-gray-200 rounded-xl bg-white">
+                    <p className="font-bold text-midnight">No profile update requests submitted</p>
+                    <p className="text-[11px] text-secondary mt-1">When you update important profile fields, the verification record will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="border-2 border-midnight rounded-xl overflow-hidden bg-white shadow-sm">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-100 border-b border-midnight font-bold text-midnight">
+                        <tr>
+                          <th className="p-2.5 text-left">Request ID</th>
+                          <th className="p-2.5 text-left">Fields Changed</th>
+                          <th className="p-2.5 text-left">Reason</th>
+                          <th className="p-2.5 text-left">Status</th>
+                          <th className="p-2.5 text-left">Admin Feedback</th>
+                          <th className="p-2.5 text-left">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {profileRequestsList
+                          .filter(r => r.requested_by_user_id === currentUser?.user_id || r.member_id === currentUser?.member_id)
+                          .map(r => (
+                            <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="p-2.5 font-mono text-[11px]">#{r.id.slice(-6)}</td>
+                              <td className="p-2.5 font-bold">{Object.keys(r.changes || {}).join(', ')}</td>
+                              <td className="p-2.5">{r.reason}</td>
+                              <td className="p-2.5">
+                                <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${r.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : r.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-900'}`}>
+                                  {r.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-secondary">{r.admin_notes || (r.status === 'pending' ? 'Pending admin verification' : '-')}</td>
+                              <td className="p-2.5 text-secondary">{new Date(r.submitted_at).toLocaleDateString()}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

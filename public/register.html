@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Family Member Registration • FamilySphere | Ambulkar Family Tree</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/auth.css" />
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <div class="auth-container">
+    <div class="glass-card" style="max-width: 520px;">
+      <div class="auth-brand">
+        <div class="brand-icon">🌱</div>
+        <h1 class="brand-title">Join Ambulkar Lineage</h1>
+        <p class="brand-subtitle">Family Member Registration (Level 1 Member)</p>
+      </div>
+
+      <div id="alertBox" class="alert-box alert-error" style="display: none;"></div>
+
+      <form id="registerForm" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label class="form-label" for="regName">Full Name *</label>
+          <input type="text" id="regName" class="form-input" placeholder="e.g. Sarthak Ambulkar" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="regEmail">Email Address *</label>
+          <input type="email" id="regEmail" class="form-input" placeholder="e.g. name@ambulkar.family" required autocomplete="email" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="regMobile">Mobile Number (Optional)</label>
+          <input type="tel" id="regMobile" class="form-input" placeholder="+91 98230 00000" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="regBranch">Family Branch *</label>
+          <select id="regBranch" class="form-select" required>
+            <option value="">Select your family branch...</option>
+            <option value="Sudhakar Ambulkar Family">Sudhakar Ambulkar Family (Senior Branch)</option>
+            <option value="Eknath Ambulkar Family">Eknath Ambulkar Family (Engineering & Tech)</option>
+            <option value="Prakash Ambulkar Family">Prakash Ambulkar Family (Commerce & Agri)</option>
+            <option value="Krushana Ambulkar Family">Krushana Ambulkar Family (Medical & Education)</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label" for="regPassword">Password *</label>
+            <div class="password-field-wrapper">
+              <input type="password" id="regPassword" class="form-input" placeholder="••••••••" required minlength="6" />
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('regPassword', this)">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="regConfirm">Confirm Password *</label>
+            <div class="password-field-wrapper">
+              <input type="password" id="regConfirm" class="form-input" placeholder="••••••••" required minlength="6" />
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility('regConfirm', this)">
+                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="regAvatar">Profile Photograph URL (Optional)</label>
+          <input type="url" id="regAvatar" class="form-input" placeholder="https://images.unsplash.com/... or leave blank" />
+        </div>
+
+        <div style="background: rgba(238, 242, 255, 0.7); border: 1px solid #c7d2fe; border-radius: 14px; padding: 0.75rem; font-size: 0.75rem; color: #3730a3; margin-bottom: 1.25rem;">
+          🛡️ <strong>Level 1 Member Registration:</strong> Accounts strictly register with family member privileges. Admin roles must be granted by the Super Admin in the central lineage directory.
+        </div>
+
+        <button type="submit" id="regBtn" class="btn-primary">
+          Create Member Account
+        </button>
+
+        <div style="margin-top: 1.5rem; text-align: center; font-size: 0.82rem; color: #64748b;">
+          Already registered? 
+          <a href="/login.html" style="color: #4f46e5; font-weight: 700; text-decoration: none;">Sign In Here</a>
+          <br>
+          <a href="/" style="display: inline-block; margin-top: 0.8rem; font-size: 0.78rem; color: #64748b; text-decoration: underline;">← Return to Family Tree Website</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/auth.js"></script>
+</body>
+</html>
