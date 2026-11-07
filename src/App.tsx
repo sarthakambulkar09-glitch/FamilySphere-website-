@@ -464,10 +464,10 @@ export default function App() {
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState<boolean>(false);
   const [changeReasonInput, setChangeReasonInput] = useState<string>('Updated profile information');
 
-  // Vault Login Form inputs
-  const [vaultEmail, setVaultEmail] = useState<string>('sarthakambulkar09@gmail.com');
-  const [vaultPassword, setVaultPassword] = useState<string>('password123');
-  const [vaultMasterKey, setVaultMasterKey] = useState<string>('AMBULKAR-MASTER-2026');
+  // Vault Login Form inputs (cleared, no prefilled credentials)
+  const [vaultEmail, setVaultEmail] = useState<string>('');
+  const [vaultPassword, setVaultPassword] = useState<string>('');
+  const [vaultMasterKey, setVaultMasterKey] = useState<string>('');
   const [vaultError, setVaultError] = useState<string>('');
 
   // Edit Profile Form state (for individual member)
@@ -884,8 +884,11 @@ export default function App() {
   // Logout Handler
   const handleLogout = () => {
     localStorage.removeItem('familysphere_token');
+    localStorage.removeItem('familysphere_user');
     setCurrentUser(null);
     setAuthToken(null);
+    setVaultEmail('');
+    setVaultPassword('');
     setIsSuperAdminDashboardOpen(false);
     showToast('Signed out successfully', 'success');
   };
@@ -3558,51 +3561,6 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-5 text-left text-xs">
-                  {/* Quick Demo Login Switcher */}
-                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
-                    <p className="font-bold text-midnight text-xs mb-2 flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>One-Click Demo Account Sign-In (Select Role to Test):</span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { name: 'Sarthak (Super Admin)', email: 'sarthakambulkar09@gmail.com', role: 'Super Admin' },
-                        { name: 'Dr. Swapnil (Grandson/Doctor)', email: 'swapnil@ambulkar.family', role: 'Doctor' },
-                        { name: 'Maratherao (Patriarch)', email: 'maratherao@ambulkar.family', role: 'Founder' },
-                        { name: 'Prakash (Son / Branch 1)', email: 'prakash@ambulkar.family', role: 'Branch Head' },
-                        { name: 'Komal (Granddaughter)', email: 'komal@ambulkar.family', role: 'Granddaughter' },
-                      ].map(acc => (
-                        <button
-                          key={acc.email}
-                          type="button"
-                          onClick={async () => {
-                            setVaultEmail(acc.email);
-                            setVaultPassword('password123');
-                            try {
-                              const res = await fetch('/api/auth/login', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ email: acc.email, password: 'password123' }),
-                              });
-                              const data = await res.json();
-                              if (res.ok) {
-                                localStorage.setItem('familysphere_token', data.token);
-                                setAuthToken(data.token);
-                                setCurrentUser(data.user);
-                                showToast(`Signed in as ${data.user.name} (${acc.role})!`, 'success');
-                              }
-                            } catch (e) {
-                              showToast('Quick login error', 'error');
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-white hover:bg-yellow-100 text-midnight border border-midnight rounded-xl font-bold text-[11px] transition shadow-[1px_1px_0px_#172033]"
-                        >
-                          {acc.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   <form
                     onSubmit={async e => {
                       e.preventDefault();
@@ -3637,7 +3595,9 @@ export default function App() {
                         required
                         value={vaultEmail}
                         onChange={e => setVaultEmail(e.target.value)}
-                        className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs"
+                        placeholder="name@ambulkar.family"
+                        autoComplete="email"
+                        className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white text-midnight placeholder:text-gray-400"
                       />
                     </div>
                     <div>
@@ -3647,7 +3607,9 @@ export default function App() {
                         required
                         value={vaultPassword}
                         onChange={e => setVaultPassword(e.target.value)}
-                        className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs"
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                        className="w-full p-2.5 rounded-xl border-2 border-midnight text-xs bg-white text-midnight placeholder:text-gray-400"
                       />
                     </div>
                     <div className="flex items-center justify-between text-[11px] pt-1">
@@ -3753,8 +3715,10 @@ export default function App() {
                   type="email"
                   value={vaultEmail}
                   onChange={e => setVaultEmail(e.target.value)}
+                  placeholder="admin@ambulkar.family"
+                  autoComplete="email"
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-midnight text-xs"
+                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-midnight text-xs bg-white text-midnight placeholder:text-gray-400"
                 />
               </div>
 
@@ -3764,8 +3728,10 @@ export default function App() {
                   type="password"
                   value={vaultPassword}
                   onChange={e => setVaultPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-midnight text-xs"
+                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-midnight text-xs bg-white text-midnight placeholder:text-gray-400"
                 />
               </div>
 
@@ -6402,53 +6368,6 @@ export default function App() {
             {/* TAB 1: LOGIN */}
             {authModalTab === 'login' && (
               <div className="space-y-4">
-                {/* One-Click Demo Switcher */}
-                <div className="p-3.5 bg-indigo-50/80 rounded-2xl border border-indigo-200">
-                  <p className="font-bold text-slate-800 text-[11px] mb-2 flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Quick One-Click Demo Sign-In (Select Role):</span>
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { name: 'Sarthak (Super Admin)', email: 'sarthakambulkar09@gmail.com', role: 'Super Admin' },
-                      { name: 'Dr. Swapnil (Family Admin)', email: 'swapnil@ambulkar.family', role: 'Family Admin' },
-                      { name: 'Sagar (Member / Twin)', email: 'sagar@ambulkar.family', role: 'Member' },
-                      { name: 'Maratherao (Patriarch)', email: 'maratherao@ambulkar.family', role: 'Founder' },
-                    ].map(acc => (
-                      <button
-                        key={acc.email}
-                        type="button"
-                        onClick={async () => {
-                          setVaultEmail(acc.email);
-                          setVaultPassword('password123');
-                          try {
-                            const res = await fetch('/api/auth/login', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ email: acc.email, password: 'password123' }),
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              localStorage.setItem('familysphere_token', data.token);
-                              setAuthToken(data.token);
-                              setCurrentUser(data.user);
-                              setIsAuthModalOpen(false);
-                              setIsMemberDashboardOpen(true);
-                              showToast(`Authenticated as ${data.user.name} (${acc.role})!`, 'success');
-                              fetchProfileRequests();
-                            }
-                          } catch (e) {
-                            showToast('Login error', 'error');
-                          }
-                        }}
-                        className="px-2 py-1 bg-white hover:bg-yellow-50 text-slate-800 border border-slate-300 rounded-lg font-bold text-[10px] transition shadow-xs"
-                      >
-                        {acc.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <form
                   onSubmit={async e => {
                     e.preventDefault();
