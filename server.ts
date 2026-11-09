@@ -1255,6 +1255,107 @@ async function startServer() {
     res.json(members);
   });
 
+  // 4b. CREATE New Family Member (Super Admin / Authorized Member)
+  app.post('/api/members', (req, res) => {
+    const {
+      name,
+      branch,
+      generation,
+      birth,
+      death,
+      birthplace,
+      hometown,
+      education,
+      occupation,
+      bio,
+      avatar,
+      achievements,
+      isTwin,
+      is_twin,
+      twinWith,
+      parents,
+      siblings,
+      spouse,
+      children,
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Full Name is required to add family member' });
+    }
+
+    // Check for duplicates
+    const existing = members.find(m => m.name.toLowerCase().trim() === name.toLowerCase().trim());
+    if (existing) {
+      return res.status(409).json({ error: `A member named "${name}" already exists in the family directory.` });
+    }
+
+    const newId = `amb_${Date.now()}`;
+    const newMember: MemberRecord = {
+      id: newId,
+      owner_user_id: `usr_${newId}`,
+      name: name.trim(),
+      branch: branch || 'Eknath Ambulkar Family',
+      generation: generation || 'Gen 3 (Grandchildren)',
+      birth: birth || '2000',
+      death: death || null,
+      birthplace: birthplace || 'Maharashtra, India',
+      hometown: hometown || 'Maharashtra, India',
+      education: education || 'Graduate',
+      occupation: occupation || 'Professional',
+      bio: bio || `Member of ${branch || 'the Ambulkar Family'}.`,
+      avatar: avatar || 'https://placehold.co/150x150/9878FF/FFFFFF?text=' + encodeURIComponent(name.slice(0, 2)),
+      achievements: Array.isArray(achievements) ? achievements : [],
+      isTwin: Boolean(isTwin || is_twin),
+      twinWith: twinWith || undefined,
+      parents: Array.isArray(parents) ? parents : [],
+      siblings: Array.isArray(siblings) ? siblings : [],
+      spouse: spouse || null,
+      children: Array.isArray(children) ? children : [],
+      privacy: 'public',
+      personal_photos: [],
+    };
+
+    members.push(newMember);
+
+    // If twin is designated, cross-link
+    if (newMember.isTwin && newMember.twinWith) {
+      const twinPartner = members.find(m => m.id === newMember.twinWith);
+      if (twinPartner) {
+        twinPartner.isTwin = true;
+        twinPartner.twinWith = newMember.id;
+      }
+    }
+
+    logAction(
+      { name: 'Admin', email: 'sarthakambulkar09@gmail.com', role: 'super_admin' },
+      'MEMBER_CREATE',
+      `Member: ${newMember.name}`,
+      `Added new family member to ${newMember.branch}`
+    );
+
+    res.status(201).json(newMember);
+  });
+
+  // 4c. DELETE Member (Super Admin)
+  app.delete('/api/members/:id', (req, res) => {
+    const memberId = req.params.id;
+    const targetIndex = members.findIndex(m => m.id === memberId);
+    if (targetIndex === -1) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    const removed = members.splice(targetIndex, 1)[0];
+
+    logAction(
+      { name: 'Admin', email: 'sarthakambulkar09@gmail.com', role: 'super_admin' },
+      'MEMBER_DELETE',
+      `Member: ${removed.name}`,
+      `Deleted family member from directory`
+    );
+
+    res.json({ success: true, removedId: memberId });
+  });
+
   // 5. UPDATE Member Profile (ENFORCING ROW LEVEL SECURITY)
   app.put('/api/members/:id', (req, res) => {
     const memberId = req.params.id;

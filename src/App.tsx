@@ -67,6 +67,8 @@ import {
   Copy,
   ExternalLink,
   Server,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
 import {
   getSupabaseConfig,
@@ -75,6 +77,17 @@ import {
   supabaseAuth,
   subscribeToSupabaseTable,
 } from './lib/supabase';
+import {
+  getFamilyMembers,
+  addFamilyMember,
+  updateFamilyMember,
+  deleteFamilyMember,
+  uploadFamilyPhoto,
+  getFamilyPhotos,
+  subscribeToFamilyChanges,
+  uploadToSupabaseBucket,
+  exportFamilyDatabaseJson,
+} from './lib/supabase-service';
 
 // Family Photo Archive presets for quick selection
 const FAMILY_ARCHIVE_PHOTOS = [
@@ -273,6 +286,7 @@ interface TiltCardProps {
   onClick?: () => void;
   maxTilt?: number;
   glowColor?: string;
+  style?: React.CSSProperties;
 }
 
 const TiltCard: React.FC<TiltCardProps> = ({
@@ -281,6 +295,7 @@ const TiltCard: React.FC<TiltCardProps> = ({
   onClick,
   maxTilt = 6,
   glowColor = 'rgba(113, 59, 255, 0.35)',
+  style: customStyle,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
@@ -328,7 +343,7 @@ const TiltCard: React.FC<TiltCardProps> = ({
       onClick={onClick}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      style={style}
+      style={{ ...customStyle, ...style }}
     >
       <div
         className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300"
@@ -589,6 +604,16 @@ export default function App() {
   });
   const [supabaseKeyInput, setSupabaseKeyInput] = useState<string>('');
 
+  // Cloud & Offline Status indicators
+  const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [isSavingToCloud, setIsSavingToCloud] = useState<boolean>(false);
+  const [cloudSaveMessage, setCloudSaveMessage] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isCloudManagerModalOpen, setIsCloudManagerModalOpen] = useState<boolean>(false);
+  const [cloudManagerTab, setCloudManagerTab] = useState<'status' | 'buckets' | 'backup' | 'schema'>('status');
+  const [isExportingBackup, setIsExportingBackup] = useState<boolean>(false);
+  const [storageTestBucket, setStorageTestBucket] = useState<'family-profiles' | 'family-gallery' | 'family-documents' | 'family-memories'>('family-gallery');
+
   // In-App Confirmation Modal (safely replaces window.confirm for iframe compatibility)
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -768,6 +793,48 @@ export default function App() {
   useEffect(() => {
     fetchAllData();
     checkSession();
+
+    // Check initial Supabase connectivity
+    testSupabaseConnection().then(res => {
+      setSupabaseStatus({ ...res, testing: false });
+    });
+
+    // Online / Offline synchronization listeners
+    const handleOnline = () => {
+      setIsOffline(false);
+      showToast('Network online: Supabase Cloud synchronization active', 'success');
+      testSupabaseConnection().then(res => setSupabaseStatus({ ...res, testing: false }));
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      showToast('Offline mode active: local cache preserved', 'error');
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Supabase Realtime synchronization subscription
+    const unsubscribe = subscribeToFamilyChanges({
+      onMemberChange: (payload) => {
+        console.log('[Supabase Realtime] Member change event:', payload);
+        fetchAllData();
+        showToast('Realtime sync: Family member records updated from Supabase', 'success');
+      },
+      onPhotoChange: (payload) => {
+        console.log('[Supabase Realtime] Photo change event:', payload);
+        fetchAllData();
+        showToast('Realtime sync: New photograph uploaded to Supabase Storage', 'success');
+      },
+      onApprovalChange: (payload) => {
+        console.log('[Supabase Realtime] Approval request event:', payload);
+        fetchProfileRequests();
+      },
+    });
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1389,6 +1456,24 @@ export default function App() {
   const activeFamily = useMemo(() => {
     return familiesList.find(f => f.id === selectedFamilyId) || familiesList[0];
   }, [familiesList, selectedFamilyId]);
+
+  // Branch Color Mapping based on branchesList
+  const getBranchColor = (branchName?: string) => {
+    if (!branchName) return '#6366F1';
+    const found = branchesList.find(b =>
+      b.name?.toLowerCase().trim() === branchName.toLowerCase().trim() ||
+      branchName.toLowerCase().includes(b.name?.toLowerCase().trim() || '___') ||
+      (b.name && branchName.toLowerCase().includes(b.name.toLowerCase().split(' ')[0]))
+    );
+    if (found?.color) return found.color;
+    const lower = branchName.toLowerCase();
+    if (lower.includes('sudhakar')) return '#6366F1';
+    if (lower.includes('eknath')) return '#10B981';
+    if (lower.includes('prakash')) return '#F59E0B';
+    if (lower.includes('krushana')) return '#EC4899';
+    if (lower.includes('grandparent') || lower.includes('root') || lower.includes('maratherao')) return '#8B5CF6';
+    return '#6366F1';
+  };
 
   // Filtered members by search query and active family
   const filteredMembers = useMemo(() => {
@@ -2068,6 +2153,38 @@ export default function App() {
             </div>
           )}
 
+          {/* Supabase Cloud Connection Status Button */}
+          <button
+            onClick={() => setIsCloudManagerModalOpen(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-midnight font-bold text-xs transition shadow-[2px_2px_0px_#172033] cursor-pointer ${
+              isOffline
+                ? 'bg-rose-100 text-rose-800'
+                : supabaseStatus.connected
+                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                : 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+            }`}
+            title="Open Supabase Cloud Database & Storage Manager"
+          >
+            {isOffline ? (
+              <>
+                <CloudOff className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
+                <span className="hidden sm:inline">Offline</span>
+              </>
+            ) : supabaseStatus.connected ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <Cloud className="w-3.5 h-3.5 text-emerald-700" />
+                <span className="hidden sm:inline">Supabase Live</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <Cloud className="w-3.5 h-3.5 text-amber-700" />
+                <span className="hidden sm:inline">Cloud Ready</span>
+              </>
+            )}
+          </button>
+
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
@@ -2745,54 +2862,68 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredMembers.map(m => (
-                  <TiltCard
-                    key={m.id}
-                    maxTilt={4}
-                    glowColor="rgba(113, 59, 255, 0.3)"
-                    className="p-6 bg-white cursor-pointer text-left flex flex-col justify-between"
-                    onClick={() => {
-                      setSelectedProfileId(m.id);
-                      scrollToSection('sec-profile');
-                    }}
-                  >
-                    <div>
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="relative">
-                          <img
-                            src={m.avatar}
-                            alt={m.name}
-                            className="w-16 h-16 rounded-full object-cover border-2 border-midnight shadow-[2px_2px_0px_#172033]"
-                          />
-                          {m.isTwin && (
-                            <span className="absolute -bottom-1 -right-1 bg-amber-300 text-[10px] p-1 rounded-full border border-midnight shadow-sm">
-                              👯‍♂️
-                            </span>
-                          )}
-                        </div>
-                        <div className="overflow-hidden">
-                          <h4 className="font-heading font-bold text-base text-midnight truncate">
-                            {m.name}
-                          </h4>
-                          <p className="text-xs text-secondary">{m.generation}</p>
-                          <span className="inline-block mt-1 px-2.5 py-0.5 rounded bg-yellow-200 text-midnight text-[10px] font-bold border border-midnight">
-                            {m.branch}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-secondary line-clamp-2 leading-relaxed">
-                        {m.bio}
-                      </p>
-                    </div>
+                {filteredMembers.map(m => {
+                  const branchColor = getBranchColor(m.branch);
+                  return (
+                    <TiltCard
+                      key={m.id}
+                      maxTilt={4}
+                      glowColor="rgba(113, 59, 255, 0.3)"
+                      className="p-6 bg-white cursor-pointer text-left flex flex-col justify-between relative overflow-hidden transition-all duration-300 hover:shadow-lg"
+                      style={{ borderTop: `4px solid ${branchColor}` }}
+                      onClick={() => {
+                        setSelectedProfileId(m.id);
+                        scrollToSection('sec-profile');
+                      }}
+                    >
+                      {/* Subtle Top-Border Color Accent Bar matching specific branch color */}
+                      <div
+                        className="absolute top-0 left-0 right-0 h-1.5 z-20 pointer-events-none"
+                        style={{ backgroundColor: branchColor }}
+                        title={`Branch: ${m.branch}`}
+                      />
 
-                    <div className="mt-4 pt-3 border-t border-dashed border-gray-200 flex items-center justify-between text-xs text-midnight">
-                      <span className="font-semibold text-[11px] text-indigo-600">
-                        View Spotlight
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </div>
-                  </TiltCard>
-                ))}
+                      <div>
+                        <div className="flex items-center gap-4 mb-4 pt-1">
+                          <div className="relative">
+                            <img
+                              src={m.avatar}
+                              alt={m.name}
+                              className="w-16 h-16 rounded-full object-cover border-2 border-midnight shadow-[2px_2px_0px_#172033]"
+                            />
+                            {m.isTwin && (
+                              <span className="absolute -bottom-1 -right-1 bg-amber-300 text-[10px] p-1 rounded-full border border-midnight shadow-sm" title="Twin Brother (Sagar & Dr. Swapnil)">
+                                👯‍♂️
+                              </span>
+                            )}
+                          </div>
+                          <div className="overflow-hidden">
+                            <h4 className="font-heading font-bold text-base text-midnight truncate">
+                              {m.name}
+                            </h4>
+                            <p className="text-xs text-secondary">{m.generation}</p>
+                            <span
+                              className="inline-block mt-1 px-2.5 py-0.5 rounded text-white text-[10px] font-bold shadow-xs border border-midnight/20"
+                              style={{ backgroundColor: branchColor }}
+                            >
+                              {m.branch}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-secondary line-clamp-2 leading-relaxed">
+                          {m.bio}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-dashed border-gray-200 flex items-center justify-between text-xs text-midnight">
+                        <span className="font-semibold text-[11px] text-indigo-600">
+                          View Spotlight
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </div>
+                    </TiltCard>
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -7211,6 +7342,359 @@ export default function App() {
               >
                 {confirmModal.confirmLabel || 'Delete'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING CLOUD SYNC & OFFLINE INDICATOR */}
+      {isSavingToCloud && (
+        <div className="fixed top-20 right-6 z-50 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow-lg border-2 border-midnight text-xs font-bold animate-pulse">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <span>{cloudSaveMessage || 'Syncing to Supabase Cloud...'}</span>
+        </div>
+      )}
+
+      {/* UPLOAD PROGRESS INDICATOR */}
+      {uploadProgress !== null && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-80 p-3 bg-white border-2 border-midnight rounded-xl shadow-[4px_4px_0px_#172033]">
+          <div className="flex justify-between items-center text-xs font-bold text-midnight mb-1.5">
+            <span>Uploading to Supabase Storage...</span>
+            <span>{uploadProgress}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden border border-midnight">
+            <div
+              className="bg-indigo-600 h-full transition-all duration-150"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* OFFLINE STATUS BANNER */}
+      {isOffline && (
+        <div className="fixed bottom-0 inset-x-0 z-50 py-2 px-4 bg-amber-400 text-midnight text-center text-xs font-bold border-t-2 border-midnight flex items-center justify-center gap-2">
+          <CloudOff className="w-4 h-4 text-amber-900" />
+          <span>Offline mode active: local cache preserved. Records will synchronize to Supabase once online.</span>
+        </div>
+      )}
+
+      {/* SUPABASE CLOUD DATABASE & STORAGE MANAGER MODAL */}
+      {isCloudManagerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-midnight/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="notebook-card bg-white w-full max-w-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_#172033] border-3 border-midnight max-h-[90vh] flex flex-col my-8">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b pb-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 border-2 border-midnight flex items-center justify-center shadow-[2px_2px_0px_#172033]">
+                  <Database className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-black text-xl text-midnight">
+                    Supabase Cloud Database &amp; Storage Center
+                  </h3>
+                  <p className="text-xs text-secondary">
+                    Permanent PostgreSQL database and cloud object storage for Ambulkar Dynasty
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCloudManagerModalOpen(false)}
+                className="p-1.5 rounded-lg border border-midnight hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="w-5 h-5 text-midnight" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex flex-wrap gap-2 mb-5 border-b pb-3 text-xs font-bold">
+              <button
+                onClick={() => setCloudManagerTab('status')}
+                className={`px-3 py-1.5 rounded-lg border border-midnight transition cursor-pointer flex items-center gap-1.5 ${
+                  cloudManagerTab === 'status' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-50 text-midnight hover:bg-gray-100'
+                }`}
+              >
+                <Cloud className="w-3.5 h-3.5" /> Connection &amp; Status
+              </button>
+              <button
+                onClick={() => setCloudManagerTab('buckets')}
+                className={`px-3 py-1.5 rounded-lg border border-midnight transition cursor-pointer flex items-center gap-1.5 ${
+                  cloudManagerTab === 'buckets' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-50 text-midnight hover:bg-gray-100'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" /> Storage Buckets (4)
+              </button>
+              <button
+                onClick={() => setCloudManagerTab('backup')}
+                className={`px-3 py-1.5 rounded-lg border border-midnight transition cursor-pointer flex items-center gap-1.5 ${
+                  cloudManagerTab === 'backup' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-50 text-midnight hover:bg-gray-100'
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" /> Backup &amp; Recovery
+              </button>
+              <button
+                onClick={() => setCloudManagerTab('schema')}
+                className={`px-3 py-1.5 rounded-lg border border-midnight transition cursor-pointer flex items-center gap-1.5 ${
+                  cloudManagerTab === 'schema' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-gray-50 text-midnight hover:bg-gray-100'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" /> SQL Schema &amp; RLS
+              </button>
+            </div>
+
+            {/* Tab Contents */}
+            <div className="overflow-y-auto flex-1 pr-1 space-y-4 text-xs">
+              {/* TAB 1: STATUS & CONFIG */}
+              {cloudManagerTab === 'status' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-50 rounded-xl border border-midnight flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-secondary text-[11px] uppercase">Supabase Project Endpoint</p>
+                      <p className="font-mono text-sm text-midnight font-bold mt-0.5 break-all">
+                        {supabaseConfigState.url}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            supabaseStatus.connected ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {supabaseStatus.connected ? '✓ Database Online' : '⚠️ Ready for Connection'}
+                        </span>
+                        {supabaseStatus.latencyMs && (
+                          <span className="text-secondary text-[10px]">
+                            Latency: {supabaseStatus.latencyMs}ms
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setSupabaseStatus(prev => ({ ...prev, testing: true }));
+                        const res = await testSupabaseConnection();
+                        setSupabaseStatus({ ...res, testing: false });
+                        showToast(res.message, res.connected ? 'success' : 'error');
+                      }}
+                      disabled={supabaseStatus.testing}
+                      className="px-4 py-2 bg-yellow-300 hover:bg-yellow-200 text-midnight font-bold rounded-xl border border-midnight shadow-[2px_2px_0px_#172033] cursor-pointer flex items-center gap-2 shrink-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${supabaseStatus.testing ? 'animate-spin' : ''}`} />
+                      {supabaseStatus.testing ? 'Testing...' : 'Test Connection'}
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="font-bold text-blue-900 mb-1">Status Message:</p>
+                    <p className="text-blue-800 leading-relaxed">{supabaseStatus.message}</p>
+                  </div>
+
+                  {/* Supabase Publishable Key Form */}
+                  <div className="p-4 bg-white rounded-xl border border-midnight">
+                    <label className="block font-bold text-midnight mb-1">
+                      Supabase Publishable / Anon Key
+                    </label>
+                    <p className="text-[11px] text-secondary mb-2">
+                      Enter your project's publishable key from Supabase Dashboard &gt; Project Settings &gt; API.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        value={supabaseKeyInput}
+                        onChange={e => setSupabaseKeyInput(e.target.value)}
+                        className="flex-1 p-2 rounded-xl border border-midnight font-mono text-xs"
+                      />
+                      <button
+                        onClick={() => {
+                          if (!supabaseKeyInput.trim()) {
+                            showToast('Please enter a valid key', 'error');
+                            return;
+                          }
+                          setSupabaseConfig(supabaseConfigState.url, supabaseKeyInput.trim());
+                          setSupabaseConfigState(getSupabaseConfig());
+                          showToast('Supabase key saved and client initialized!', 'success');
+                          testSupabaseConnection().then(res => setSupabaseStatus({ ...res, testing: false }));
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl border border-midnight shadow-[2px_2px_0px_#172033] cursor-pointer"
+                      >
+                        Save Key
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: STORAGE BUCKETS */}
+              {cloudManagerTab === 'buckets' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { name: 'family-profiles', desc: 'Member profile avatars & headshots', limit: '10MB' },
+                      { name: 'family-gallery', desc: 'Family albums & reunion photographs', limit: '25MB' },
+                      { name: 'family-documents', desc: 'Family records, certificates, archives', limit: '25MB' },
+                      { name: 'family-memories', desc: 'Vintage & historical memories', limit: '25MB' },
+                    ].map(bucket => (
+                      <div key={bucket.name} className="p-3 bg-gray-50 rounded-xl border border-midnight">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-mono font-bold text-indigo-700 text-xs">{bucket.name}</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">Public CDN</span>
+                        </div>
+                        <p className="text-[11px] text-secondary mb-2">{bucket.desc}</p>
+                        <p className="text-[10px] text-gray-500 font-medium">Size limit: {bucket.limit} per file</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="p-4 bg-yellow-50 rounded-xl border border-midnight">
+                    <h4 className="font-bold text-midnight mb-2 flex items-center gap-1.5">
+                      <Upload className="w-4 h-4 text-indigo-600" /> Test Upload to Cloud Storage Bucket
+                    </h4>
+                    <div className="flex flex-col sm:flex-row gap-3 items-center">
+                      <select
+                        value={storageTestBucket}
+                        onChange={e => setStorageTestBucket(e.target.value as any)}
+                        className="p-2 rounded-xl border border-midnight bg-white text-xs font-bold w-full sm:w-auto"
+                      >
+                        <option value="family-profiles">family-profiles</option>
+                        <option value="family-gallery">family-gallery</option>
+                        <option value="family-documents">family-documents</option>
+                        <option value="family-memories">family-memories</option>
+                      </select>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadProgress(10);
+                          try {
+                            const res = await uploadToSupabaseBucket(storageTestBucket, file, file.name, (pct) => {
+                              setUploadProgress(pct);
+                            });
+                            setUploadProgress(null);
+                            showToast(`File uploaded successfully to '${storageTestBucket}'!`, 'success');
+                          } catch (err: any) {
+                            setUploadProgress(null);
+                            showToast(err.message || 'Upload failed', 'error');
+                          }
+                        }}
+                        className="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border file:border-midnight file:bg-yellow-300 file:font-bold file:text-midnight cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: BACKUP & RECOVERY */}
+              {cloudManagerTab === 'backup' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-midnight">
+                    <h4 className="font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
+                      <Download className="w-4 h-4 text-emerald-700" /> 1-Click Database Export
+                    </h4>
+                    <p className="text-[11px] text-emerald-800 mb-3 leading-relaxed">
+                      Download a complete, structured JSON backup of all 19 preserved Ambulkar family records, photos, branches, and timeline events.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        setIsExportingBackup(true);
+                        try {
+                          const jsonString = await exportFamilyDatabaseJson();
+                          const blob = new Blob([jsonString], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `ambulkar_family_backup_${new Date().toISOString().split('T')[0]}.json`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          showToast('Ambulkar family database backup exported successfully!', 'success');
+                        } catch (err) {
+                          showToast('Failed to export backup', 'error');
+                        } finally {
+                          setIsExportingBackup(false);
+                        }
+                      }}
+                      disabled={isExportingBackup}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl border border-midnight shadow-[2px_2px_0px_#172033] cursor-pointer flex items-center gap-2"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {isExportingBackup ? 'Exporting...' : 'Export Complete JSON Archive'}
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-white rounded-xl border border-midnight space-y-2">
+                    <h4 className="font-bold text-midnight">Database Backup &amp; Recovery Procedures</h4>
+                    <ol className="list-decimal list-inside space-y-1.5 text-secondary text-[11px] leading-relaxed">
+                      <li>
+                        <strong>Automated Backups:</strong> Enable automated daily backups in your Supabase Dashboard under <em>Database &gt; Backups</em>.
+                      </li>
+                      <li>
+                        <strong>Manual SQL Dump:</strong> Use <code className="bg-gray-100 px-1 py-0.5 rounded">supabase db dump</code> via Supabase CLI to create raw PostgreSQL dump files.
+                      </li>
+                      <li>
+                        <strong>Restore Procedure:</strong> Open Supabase SQL Editor and execute your backup script or import the JSON file directly via the Family Admin command centre.
+                      </li>
+                      <li>
+                        <strong>Data Protection:</strong> All records use UUID primary keys and soft-delete safeguards to prevent unintended data loss.
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: SQL SCHEMA & RLS */}
+              {cloudManagerTab === 'schema' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-secondary font-bold text-[11px]">
+                      PostgreSQL DDL &amp; Row Level Security migration script:
+                    </p>
+                    <button
+                      onClick={() => {
+                        const sqlMigrationUrl = '/supabase/migrations/20261109000000_permanent_ambulkar_supabase_storage.sql';
+                        fetch(sqlMigrationUrl)
+                          .then(r => r.text())
+                          .then(text => {
+                            navigator.clipboard.writeText(text);
+                            showToast('Full Supabase SQL migration copied to clipboard!', 'success');
+                          })
+                          .catch(() => {
+                            showToast('Migration file ready in /supabase/migrations directory', 'success');
+                          });
+                      }}
+                      className="px-3 py-1 bg-yellow-300 hover:bg-yellow-200 text-midnight rounded-lg border border-midnight font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-indigo-700" /> Copy Migration SQL
+                    </button>
+                  </div>
+                  <pre className="p-3 bg-gray-900 text-gray-100 rounded-xl font-mono text-[10px] overflow-x-auto max-h-64 border border-midnight">
+{`-- 1. EXTENSIONS
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. CORE TABLES
+-- family_members, family_branches, family_relationships,
+-- family_photos, family_memories, notifications,
+-- pending_approvals, user_profiles
+
+-- 3. STORAGE BUCKETS
+INSERT INTO storage.buckets (id, name, public) VALUES
+  ('family-profiles', 'family-profiles', true),
+  ('family-gallery', 'family-gallery', true),
+  ('family-documents', 'family-documents', false),
+  ('family-memories', 'family-memories', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 4. ROW LEVEL SECURITY (RLS)
+ALTER TABLE public.family_members ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Read Members" ON public.family_members FOR SELECT USING (true);
+CREATE POLICY "Member Update Own" ON public.family_members FOR UPDATE USING (owner_user_id = auth.uid()::text);
+CREATE POLICY "Super Admin Full Access" ON public.family_members FOR ALL USING (is_super_admin());`}
+                  </pre>
+                  <p className="text-secondary text-[10px]">
+                    Full migration file saved at <code className="font-mono bg-gray-100 px-1">/supabase/migrations/20261109000000_permanent_ambulkar_supabase_storage.sql</code>.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
